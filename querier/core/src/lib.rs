@@ -11,12 +11,12 @@ pub mod merkle;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
-use zktelemetry_risc0_aggr_core::{
+use aggregator_core::{
     key_to_u64,
     histogram_epoch_state_commit, samples_epoch_state_commit, cm_epoch_state_commit,
     CM_COLS, CM_ROWS, CM_SEEDS, CM_TOPK_SLOTS, HISTOGRAM_SLOTS,
 };
-use zktelemetry_risc0_common::KEY_BYTES_LEN;
+use zkvm_common::KEY_BYTES_LEN;
 
 /// LOW-SUPPORT privacy threshold ("suppressed sentinel").
 ///
@@ -49,8 +49,8 @@ fn sha256_bytes(parts: &[&[u8]]) -> [u8; 32] {
 }
 
 // Re-export EpochChainLink and epoch state types from aggregator for convenience
-pub use zktelemetry_risc0_aggr_core::EpochChainLink;
-pub use zktelemetry_risc0_aggr_core::{HistogramEpochState, SamplesEpochState, CmEpochState};
+pub use aggregator_core::EpochChainLink;
+pub use aggregator_core::{HistogramEpochState, SamplesEpochState, CmEpochState};
 
 // Design Note: HashMap vs Vec in Epoch States
 //

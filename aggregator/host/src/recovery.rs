@@ -10,8 +10,8 @@
 
 use anyhow::{Context, Result};
 use rocksdb::WriteBatch;
-use zktelemetry_common::epoch::EpochType;
-use zktelemetry_common::rocksdb_store::RocksDb;
+use common::epoch::EpochType;
+use common::rocksdb_store::RocksDb;
 
 /// Scan a small window around the highest tombstoned sequence for orphaned partial
 /// writes. For each sequence in the window that has *no* tombstone but *does* have

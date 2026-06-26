@@ -8,7 +8,7 @@
 //!
 //! Usage:
 //!   TRILLIAN_ADDR=http://127.0.0.1:8090 TRILLIAN_LOG_ID=<tree id> \
-//!     cargo run -p zktelemetry-risc0-data-source-host \
+//!     cargo run -p data_source \
 //!       --features trillian --bin trillian-smoke
 
 use anyhow::{ensure, Context, Result};

@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = []
-fdb = ["zktelemetry-common/fdb"]
+fdb = ["common/fdb"]
 
 [dependencies]
 anyhow = "1"
@@ -19,14 +19,14 @@ hex = "0.4"
 sha2 = "0.10"
 bytemuck = "1"
 
-zktelemetry-common = { path = "../../common" }
-zktelemetry-risc0-common = { path = "../../zkvm-common" }
+common = { path = "../../common" }
+zkvm-common = { path = "../../zkvm-common" }
 
 # RISC Zero proving (host side)
 risc0-zkvm = "3"
-zktelemetry-risc0-querier-core = { path = "../core" }
-zktelemetry-risc0-querier-methods = { path = "../methods" }
-zktelemetry-risc0-aggr-core = { path = "../../aggregator/core" }
+querier-core = { path = "../core" }
+querier-methods = { path = "../methods" }
+aggregator-core = { path = "../../aggregator/core" }
 
 # Rule-based access-control (query blacklist) screen.
-zktelemetry-query-checker = { path = "../../query_checker" }
+query-checker = { path = "../../query_checker" }

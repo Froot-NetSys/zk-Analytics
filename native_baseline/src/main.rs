@@ -29,15 +29,15 @@ use std::time::Instant;
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 
-use zktelemetry_risc0_aggr_core as aggr;
-use zktelemetry_risc0_common::{Event, KEY_BYTES_LEN};
+use aggregator_core as aggr;
+use zkvm_common::{Event, KEY_BYTES_LEN};
 
 use aggr::{
     batch_chain_hash, process_cm_aggr_with_state, process_histogram_aggr_with_state,
     process_samples_aggr_with_state, BatchInput, CmAggrInput, CmEpochState, EpochChainLink,
     HistogramAggrInput, HistogramEpochState, SamplesAggrInput, SamplesEpochState,
 };
-use zktelemetry_risc0_querier_core as q;
+use querier_core as q;
 
 // ---------------------------------------------------------------------------
 // Zipf value sampler (copied verbatim from the aggregator host bench so the

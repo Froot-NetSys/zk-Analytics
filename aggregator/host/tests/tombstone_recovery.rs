@@ -10,8 +10,8 @@
 
 use rocksdb::WriteBatch;
 use tempfile::tempdir;
-use zktelemetry_common::epoch::EpochType;
-use zktelemetry_common::rocksdb_store::{
+use common::epoch::EpochType;
+use common::rocksdb_store::{
     AggEpoch, AggEpochMeta, AggEpochProof, AggHistStruct, EpochTombstone, RocksDb,
 };
 use aggregator::recovery::recover_partial_state;

@@ -18,7 +18,7 @@ use risc0_zkvm::sha::rust_crypto::{Digest as _, Sha256};
 #[cfg(not(target_os = "zkvm"))]
 use rust_crypto::{Digest as _, Sha256};
 use serde::{Deserialize, Serialize};
-use zktelemetry_risc0_common::{Event, HASH_BYTES_LEN, KEY_BYTES_LEN};
+use zkvm_common::{Event, HASH_BYTES_LEN, KEY_BYTES_LEN};
 
 use merkle::{MerkleTree, Proof};
 use merkle_light::proof;

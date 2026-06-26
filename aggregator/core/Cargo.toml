@@ -1,5 +1,5 @@
 [package]
-name = "zktelemetry-risc0-aggr-core"
+name = "aggregator-core"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 rust_crypto = { package = "sha2", version = "0.10", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 serde-big-array = { version = "0.5", default-features = false }
-zktelemetry-risc0-common = { path = "../../zkvm-common", default-features = false }
+zkvm-common = { path = "../../zkvm-common", default-features = false }
 hashbrown = { version = "0.14", default-features = false, features = ["ahash", "inline-more", "alloc"] }
 merkle_light = { version = "0.4", default-features = false }
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
@@ -19,4 +19,4 @@ rand = "0.8"
 
 [features]
 default = ["std"]
-std = ["serde/std", "zktelemetry-risc0-common/std"]
+std = ["serde/std", "zkvm-common/std"]

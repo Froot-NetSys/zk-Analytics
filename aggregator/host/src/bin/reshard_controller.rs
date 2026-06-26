@@ -26,7 +26,7 @@
 use anyhow::{anyhow, Context, Result};
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
-use zktelemetry_common::rocksdb_store::{OwnershipEpoch, RocksDb};
+use common::rocksdb_store::{OwnershipEpoch, RocksDb};
 
 fn parse_arg(name: &str) -> Option<String> {
     let mut it = std::env::args().skip(1);

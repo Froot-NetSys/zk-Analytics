@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use risc0_zkvm::guest::env;
-use zktelemetry_risc0_aggr_core::{process_histogram_aggr, HistogramAggrInput};
+use aggregator_core::{process_histogram_aggr, HistogramAggrInput};
 
 risc0_zkvm::guest::entry!(main);
 

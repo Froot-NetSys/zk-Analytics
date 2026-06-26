@@ -23,7 +23,7 @@
 //! Lines beginning `RESULT ` are machine-readable.
 
 use anyhow::{anyhow, Context, Result};
-use zktelemetry_common::rocksdb_store::RocksDb;
+use common::rocksdb_store::RocksDb;
 
 fn parse_multi(name: &str) -> Vec<String> {
     let mut out = Vec::new();

@@ -19,7 +19,7 @@
 use anyhow::{Context, Result};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use zktelemetry_common::rocksdb_store::RocksDb;
+use common::rocksdb_store::RocksDb;
 use aggregator::kafka_consumer::{run_consumer, KafkaConsumerConfig, ConsumerSignals};
 
 fn env_string(name: &str) -> Option<String> {

@@ -1,13 +1,13 @@
 [package]
-name = "zktelemetry-risc0-querier-core"
+name = "querier-core"
 version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
 [dependencies]
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
-zktelemetry-risc0-aggr-core = { path = "../../aggregator/core", default-features = false }
-zktelemetry-risc0-common = { path = "../../zkvm-common", default-features = false }
+aggregator-core = { path = "../../aggregator/core", default-features = false }
+zkvm-common = { path = "../../zkvm-common", default-features = false }
 rust_crypto = { package = "sha2", version = "0.10", default-features = false }
 merkle_light = { version = "0.4", default-features = false }
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
@@ -19,4 +19,4 @@ bincode = { version = "2.0.0-rc.3", features = ["alloc", "serde"] }
 
 [features]
 default = ["std"]
-std = ["serde/std", "zktelemetry-risc0-aggr-core/std"]
+std = ["serde/std", "aggregator-core/std"]

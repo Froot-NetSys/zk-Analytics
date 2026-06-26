@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use risc0_zkvm::guest::env;
-use zktelemetry_risc0_aggr_core::{process_cm_aggr, CmAggrInput};
+use aggregator_core::{process_cm_aggr, CmAggrInput};
 
 risc0_zkvm::guest::entry!(main);
 

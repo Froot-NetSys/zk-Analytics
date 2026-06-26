@@ -9,7 +9,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use zktelemetry_risc0_common::{ChainHashFn, ChainInput, Event, KEY_BYTES_LEN};
+use zkvm_common::{ChainHashFn, ChainInput, Event, KEY_BYTES_LEN};
 
 fn proc_status_kb(field: &str) -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;

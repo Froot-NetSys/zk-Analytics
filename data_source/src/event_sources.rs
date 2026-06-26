@@ -13,7 +13,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use zktelemetry_risc0_common::KEY_BYTES_LEN;
+use zkvm_common::KEY_BYTES_LEN;
 
 /// A benchmark event with timestamp, key, and value.
 #[derive(Clone, Debug)]

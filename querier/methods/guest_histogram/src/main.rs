@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use risc0_zkvm::guest::env;
-use zktelemetry_risc0_querier_core::{run_histogram_query, HistogramQueryInput, HistogramQueryOutput};
+use querier_core::{run_histogram_query, HistogramQueryInput, HistogramQueryOutput};
 
 risc0_zkvm::guest::entry!(main);
 

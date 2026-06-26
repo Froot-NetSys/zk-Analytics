@@ -9,7 +9,7 @@
 //! restarting from zero.
 
 use tempfile::tempdir;
-use zktelemetry_common::rocksdb_store::{AggSourceTip, Handoff, RocksDb};
+use common::rocksdb_store::{AggSourceTip, Handoff, RocksDb};
 
 const BOUNDARY: i64 = 3;
 

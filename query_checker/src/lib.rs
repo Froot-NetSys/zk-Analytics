@@ -205,7 +205,7 @@ fn group_by_for_kind(kind: &str) -> &'static [&'static str] {
     }
 }
 
-/// Key encoding (mirrors `zktelemetry_risc0_common::KEY_BYTES_LEN`): keys are
+/// Key encoding (mirrors `zkvm_common::KEY_BYTES_LEN`): keys are
 /// 15-byte arrays matched byte-by-byte at the guest level.
 const KEY_BYTES_LEN: u32 = 15;
 /// Full key width in hex nibbles (used by full-key pattern queries).

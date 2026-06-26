@@ -1,5 +1,5 @@
 [package]
-name = "zktelemetry-query-checker"
+name = "query-checker"
 version = "0.1.0"
 edition = "2021"
 

@@ -19,7 +19,7 @@ export RAYON_NUM_THREADS="${THREADS:-56}"
 EPOCH_LIST="${EPOCH_LIST:-1 2 4}"
 
 echo "[qproof] building bench_queries (querier guest ELFs)..."
-cargo build -p zktelemetry-risc0-querier-host --bin bench_queries --release >/dev/null
+cargo build -p querier-host --bin bench_queries --release >/dev/null
 BIN=target/release/bench_queries
 
 OUT="$ROOT_DIR/results/zkvm_query_proofs.csv"

@@ -6,16 +6,16 @@ use risc0_zkvm::serde::to_vec;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use zktelemetry_common::dp;
-use zktelemetry_common::epoch::EpochType;
-use zktelemetry_common::rocksdb_store::{
+use common::dp;
+use common::epoch::EpochType;
+use common::rocksdb_store::{
     AggCmStruct, AggEpoch, AggEpochMeta, AggEpochProof, AggHistStruct,
     SampleEvent, SampleShardFrame, SeriesShardFrame, ShardedRocksDb, VerifiedSamplesStruct,
 };
 #[cfg(feature = "fdb")]
-use zktelemetry_common::fdb_store::{FdbStore, FdbStoreSync};
-use zktelemetry_risc0_aggr_core as acore;
-use zktelemetry_risc0_querier_core as qcore;
+use common::fdb_store::{FdbStore, FdbStoreSync};
+use aggregator_core as acore;
+use querier_core as qcore;
 
 /// Abstraction over data store backends (ShardedRocksDb or FdbStoreSync)
 enum DataStore {
@@ -118,7 +118,7 @@ struct AppState {
     /// Access-control policy, built once at startup (see `build_query_policy`).
     /// `None` means enforcement is disabled. `Arc` keeps per-request `AppState`
     /// clones cheap.
-    pub policy: std::sync::Arc<Option<zktelemetry_query_checker::QueryPolicy>>,
+    pub policy: std::sync::Arc<Option<query_checker::QueryPolicy>>,
 }
 
 #[allow(dead_code)]

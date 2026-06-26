@@ -34,27 +34,27 @@ use rand::{rngs::StdRng, RngCore, SeedableRng};
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts};
 use sha2::{Digest as _, Sha256};
 use std::time::Instant;
-use zktelemetry_common::dp;
-use zktelemetry_risc0_aggr_core::{
+use common::dp;
+use aggregator_core::{
     histogram_bucket_index, histogram_epoch_state_commit, samples_epoch_state_commit,
     cm_epoch_state_commit, BucketEntry, CmEpochState, EpochChainLink, HistogramEpochState,
     KeyHistogram, SamplesEpochState, CM_COLS, CM_ROWS, CM_SEEDS, CM_TOPK_SLOTS,
 };
-use zktelemetry_risc0_common::KEY_BYTES_LEN;
-use zktelemetry_risc0_querier_core::{
+use zkvm_common::KEY_BYTES_LEN;
+use querier_core::{
     CmQuery, CmQueryInput, CmQueryOutput, HistogramQuery, HistogramQueryInput,
     HistogramQueryOutput, RawEvent, RawQuery, RawQueryInput, RawQueryOutput,
     SamplesQuery, SamplesQueryInput, SamplesQueryOutput,
 };
-use zktelemetry_risc0_querier_methods::{
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_CM_ELF as QUERIER_CM_ELF,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_CM_ID as QUERIER_CM_ID,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_HISTOGRAM_ELF as QUERIER_HISTOGRAM_ELF,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_HISTOGRAM_ID as QUERIER_HISTOGRAM_ID,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_RAW_ELF as QUERIER_RAW_ELF,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_RAW_ID as QUERIER_RAW_ID,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_SAMPLES_ELF as QUERIER_SAMPLES_ELF,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_SAMPLES_ID as QUERIER_SAMPLES_ID,
+use querier_methods::{
+    QUERIER_GUEST_CM_ELF as QUERIER_CM_ELF,
+    QUERIER_GUEST_CM_ID as QUERIER_CM_ID,
+    QUERIER_GUEST_HISTOGRAM_ELF as QUERIER_HISTOGRAM_ELF,
+    QUERIER_GUEST_HISTOGRAM_ID as QUERIER_HISTOGRAM_ID,
+    QUERIER_GUEST_RAW_ELF as QUERIER_RAW_ELF,
+    QUERIER_GUEST_RAW_ID as QUERIER_RAW_ID,
+    QUERIER_GUEST_SAMPLES_ELF as QUERIER_SAMPLES_ELF,
+    QUERIER_GUEST_SAMPLES_ID as QUERIER_SAMPLES_ID,
 };
 
 const TAG_EPOCH_CHAIN: &[u8] = b"ZKTLM_EPOCH_CHAIN_V1";

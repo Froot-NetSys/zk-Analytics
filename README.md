@@ -36,13 +36,13 @@ The pipeline has three logically separated stages (paper §4–5):
 |-----------------|------|------|
 | `data_source` | `data_source/` | log generation + SHA-256 commitment; Kafka producer; Trillian checkpoints |
 | `aggregator` | `aggregator/host/` | epoch aggregation + RISC Zero proving; Kafka consumer; resharding tools |
-| `zktelemetry-risc0-aggr-core` | `aggregator/core/` | `no_std` aggregation logic shared by host + guests |
+| `aggregator-core` | `aggregator/core/` | `no_std` aggregation logic shared by host + guests |
 | `aggr_samples` / `aggr_cm` / `aggr_histogram` | `aggregator/methods/guest*` | RISC Zero aggregation guests: samples / Count-Min / histogram |
 | `querier` | `querier/server/` | HTTP query service + RISC Zero proving |
-| `zktelemetry-risc0-querier-core` (+ guests) | `querier/{core,methods}/` | query logic + RISC Zero query guests |
-| `zktelemetry-common` | `common/` | RocksDB / FoundationDB stores, epoch types, differential privacy |
-| `zktelemetry-risc0-common` | `zkvm-common/` | shared `no_std` zkVM types (`Event`, hash-chain) |
-| `zktelemetry-query-checker` | `query_checker/` | query allow/block-list access control (§5.4) |
+| `querier-core` (+ guests) | `querier/{core,methods}/` | query logic + RISC Zero query guests |
+| `common` | `common/` | RocksDB / FoundationDB stores, epoch types, differential privacy |
+| `zkvm-common` | `zkvm-common/` | shared `no_std` zkVM types (`Event`, hash-chain) |
+| `query-checker` | `query_checker/` | query allow/block-list access control (§5.4) |
 | `cf_detector` | `cf_detector/` | control-flow / output leakage detector for query guests (§5.4) |
 | `native-baseline` | `native_baseline/` | non-ZK baseline running the same analytics natively (evaluation) |
 

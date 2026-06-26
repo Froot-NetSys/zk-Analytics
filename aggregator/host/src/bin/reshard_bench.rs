@@ -27,7 +27,7 @@
 
 use anyhow::{Context, Result};
 use std::time::Instant;
-use zktelemetry_common::rocksdb_store::{current_owner_for_source, OwnershipEpoch, RocksDb};
+use common::rocksdb_store::{current_owner_for_source, OwnershipEpoch, RocksDb};
 
 fn parse_str(name: &str, default: &str) -> String {
     let mut it = std::env::args().skip(1);

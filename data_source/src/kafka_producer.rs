@@ -17,7 +17,7 @@ use rdkafka::producer::{FutureProducer, FutureRecord, Producer};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use std::time::Duration;
-use zktelemetry_risc0_common::KEY_BYTES_LEN;
+use zkvm_common::KEY_BYTES_LEN;
 
 const TAG_SHARD_CHAIN: &[u8] = b"ZKTLM_SHARD_CHAIN_V1";
 

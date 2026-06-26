@@ -1,9 +1,9 @@
 [package]
-name = "zktelemetry-risc0-querier-guest-series"
+name = "querier-guest-series"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 risc0-zkvm = { version = "3", default-features = false, features = ["std"] }
-zktelemetry-risc0-querier-core = { path = "../../core", default-features = false }
+querier-core = { path = "../../core", default-features = false }
 

@@ -1,15 +1,15 @@
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
-use zktelemetry_risc0_common::{Event, KEY_BYTES_LEN};
-use zktelemetry_risc0_querier_methods::{
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_CM_ELF as QUERIER_CM_ELF,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_CM_ID as QUERIER_CM_ID,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_HISTOGRAM_ELF as QUERIER_HISTOGRAM_ELF,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_HISTOGRAM_ID as QUERIER_HISTOGRAM_ID,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_RAW_ELF as QUERIER_RAW_ELF,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_RAW_ID as QUERIER_RAW_ID,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_SAMPLES_ELF as QUERIER_SAMPLES_ELF,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_SAMPLES_ID as QUERIER_SAMPLES_ID,
+use zkvm_common::{Event, KEY_BYTES_LEN};
+use querier_methods::{
+    QUERIER_GUEST_CM_ELF as QUERIER_CM_ELF,
+    QUERIER_GUEST_CM_ID as QUERIER_CM_ID,
+    QUERIER_GUEST_HISTOGRAM_ELF as QUERIER_HISTOGRAM_ELF,
+    QUERIER_GUEST_HISTOGRAM_ID as QUERIER_HISTOGRAM_ID,
+    QUERIER_GUEST_RAW_ELF as QUERIER_RAW_ELF,
+    QUERIER_GUEST_RAW_ID as QUERIER_RAW_ID,
+    QUERIER_GUEST_SAMPLES_ELF as QUERIER_SAMPLES_ELF,
+    QUERIER_GUEST_SAMPLES_ID as QUERIER_SAMPLES_ID,
 };
 
 /// Canonical `type` tag for the rule-based access-control screen. Mirrors the
@@ -61,7 +61,7 @@ fn policy_kind(req: &QueryRequest) -> &'static str {
 /// `QUERY_POLICY_MIN_ANONYMITY_BITS` (parsed u32) overrides the default;
 /// `QUERY_POLICY_ALLOW_ANON_IDS=1` enables anonymized-id outputs;
 /// `allow_anonymized_ids` defaults to false otherwise.
-pub(crate) fn build_query_policy() -> Option<zktelemetry_query_checker::QueryPolicy> {
+pub(crate) fn build_query_policy() -> Option<query_checker::QueryPolicy> {
     let enforce = std::env::var("QUERY_POLICY_ENFORCE")
         .map(|v| v != "0" && !v.is_empty())
         .unwrap_or(true);
@@ -69,7 +69,7 @@ pub(crate) fn build_query_policy() -> Option<zktelemetry_query_checker::QueryPol
         return None;
     }
 
-    let mut policy = zktelemetry_query_checker::QueryPolicy::default();
+    let mut policy = query_checker::QueryPolicy::default();
     // The k-anonymity threshold for membership detection (rule 1).
     if let Ok(k) = std::env::var("QUERY_POLICY_MIN_ANONYMITY_BITS")
         .unwrap_or_default()
@@ -85,7 +85,7 @@ pub(crate) fn build_query_policy() -> Option<zktelemetry_query_checker::QueryPol
 
 fn enforce_query_policy(
     req: &QueryRequest,
-    policy: &Option<zktelemetry_query_checker::QueryPolicy>,
+    policy: &Option<query_checker::QueryPolicy>,
 ) -> Result<(), (axum::http::StatusCode, String)> {
     // Enforcement disabled (QUERY_POLICY_ENFORCE=0/empty at startup).
     let policy = match policy {
@@ -116,7 +116,7 @@ fn enforce_query_policy(
         _ => None,
     };
 
-    let creq = zktelemetry_query_checker::QueryRequest {
+    let creq = query_checker::QueryRequest {
         kind: policy_kind(req).to_string(),
         key: 0,
         mask,
@@ -126,7 +126,7 @@ fn enforce_query_policy(
         support: None,
         pattern,
     };
-    let report = zktelemetry_query_checker::check_query_request(&creq, policy);
+    let report = query_checker::check_query_request(&creq, policy);
     if !report.ok {
         let detail = report
             .violations

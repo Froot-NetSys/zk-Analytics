@@ -1,4 +1,4 @@
-use zktelemetry_query_checker::{
+use query_checker::{
     check_query_request, is_membership_test, QueryPolicy, QueryRequest, QueryRuleViolationKind,
 };
 

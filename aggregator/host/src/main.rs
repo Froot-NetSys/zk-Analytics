@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use zktelemetry_risc0_aggr_core::{
+use aggregator_core::{
     histogram_bucket_index,
     process_histogram_aggr_with_state, process_samples_aggr_with_state, process_cm_aggr_with_state,
     compute_samples_out_commit, compute_histogram_out_commit, compute_cm_out_commit,
@@ -17,20 +17,20 @@ use zktelemetry_risc0_aggr_core::{
     CmAggrInput, CmAggrOutput, HistogramAggrInput, HistogramAggrOutput, KeyHistogram,
     SamplesAggrInput, SamplesAggrOutput, CM_COLS, CM_ROWS, CM_TOPK_SLOTS, HISTOGRAM_SLOTS,
 };
-use zktelemetry_risc0_aggr_methods::{
+use aggregator_methods::{
     AGGR_CM_ELF, AGGR_CM_ID, AGGR_HISTOGRAM_ELF, AGGR_HISTOGRAM_ID, AGGR_SAMPLES_ELF,
     AGGR_SAMPLES_ID,
 };
-use zktelemetry_common::epoch::EpochType;
-use zktelemetry_common::rocksdb_store::{
+use common::epoch::EpochType;
+use common::rocksdb_store::{
     current_owner_for_source, AggCmStruct, AggEpoch, AggEpochMeta, AggEpochProof, AggHistStruct,
     AggSourceTip, BatchEvent, EpochTombstone, Handoff, RocksDb, SampleEvent, SampleShardFrame,
     SeriesShardFrame, StoredEventBatch, VerifiedSamplesStruct,
 };
 use aggregator::recovery::recover_partial_state;
 #[cfg(feature = "fdb")]
-use zktelemetry_common::fdb_store::FdbStore;
-use zktelemetry_risc0_common::{Event, KEY_BYTES_LEN};
+use common::fdb_store::FdbStore;
+use zkvm_common::{Event, KEY_BYTES_LEN};
 
 /// Per-epoch end-to-end timing accumulator for the camera-ready non-ZK / zk
 /// baseline. Accumulates wall-clock milliseconds per pipeline component so the
@@ -115,7 +115,7 @@ fn hash_u64_to_u64(v: u64) -> u64 {
 }
 
 fn partition_id_for_key(key_id: &[u8; KEY_BYTES_LEN], partitions: u64) -> i16 {
-    use zktelemetry_risc0_aggr_core::key_to_u64;
+    use aggregator_core::key_to_u64;
     if partitions <= 1 {
         return 0;
     }
@@ -2520,7 +2520,7 @@ fn run_rocksdb_pipeline(mode: &str, skip_receipt_verify: bool) -> anyhow::Result
         if use_fdb {
             #[cfg(feature = "fdb")]
             if let Some(ref fdb) = fdb_store {
-                use zktelemetry_common::fdb_store::FdbWriteBatch;
+                use common::fdb_store::FdbWriteBatch;
 
                 let rt = fdb_runtime.as_ref().context("FDB runtime not available")?;
 

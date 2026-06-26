@@ -18,18 +18,18 @@
 
 use cf_detector::{differential_check, CheckResult, ExitOutcome, Verdict};
 
-use zktelemetry_risc0_aggr_core::{
+use aggregator_core::{
     cm_bucket_index, BucketEntry, CmEpochState, HistogramEpochState, KeyHistogram, SamplesEpochState,
     CM_COLS, CM_ROWS, HISTOGRAM_SLOTS,
 };
-use zktelemetry_risc0_common::{Event, KEY_BYTES_LEN};
-use zktelemetry_risc0_querier_core::{
+use zkvm_common::{Event, KEY_BYTES_LEN};
+use querier_core::{
     CmQuery, CmQueryInput, HistogramQuery, HistogramQueryInput, SamplesQuery, SamplesQueryInput,
 };
-use zktelemetry_risc0_querier_methods::{
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_CM_ELF as CM_ELF,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_HISTOGRAM_ELF as HISTOGRAM_ELF,
-    ZKTELEMETRY_RISC0_QUERIER_GUEST_SAMPLES_ELF as SAMPLES_ELF,
+use querier_methods::{
+    QUERIER_GUEST_CM_ELF as CM_ELF,
+    QUERIER_GUEST_HISTOGRAM_ELF as HISTOGRAM_ELF,
+    QUERIER_GUEST_SAMPLES_ELF as SAMPLES_ELF,
 };
 
 // ===========================================================================

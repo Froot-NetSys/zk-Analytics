@@ -30,7 +30,7 @@
 //! key=value records for harness consumption.
 
 use anyhow::{anyhow, Context, Result};
-use zktelemetry_common::rocksdb_store::{Handoff, OwnershipEpoch, RocksDb};
+use common::rocksdb_store::{Handoff, OwnershipEpoch, RocksDb};
 
 fn parse_multi(name: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -69,7 +69,7 @@ fn parse_arg(name: &str) -> Option<String> {
 /// every source assigned to exactly one aggregator in `[0, Y)`, none dropped.
 /// This is the correctness check for an X->Y reshard's ownership layer.
 fn check_coverage() -> Result<()> {
-    use zktelemetry_common::rocksdb_store::current_owner_for_source;
+    use common::rocksdb_store::current_owner_for_source;
     let path = parse_arg("--rocksdb-path")
         .ok_or_else(|| anyhow!("--check-coverage requires --rocksdb-path"))?;
     let n: u32 = parse_arg("--sources")

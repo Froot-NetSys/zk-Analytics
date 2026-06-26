@@ -32,8 +32,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
-use zktelemetry_common::epoch::EpochType;
-use zktelemetry_common::rocksdb_store::{
+use common::epoch::EpochType;
+use common::rocksdb_store::{
     BatchEvent, EpochBatcherState, SourceState, StoredEventBatch, RocksDb, KEY_BYTES_LEN,
 };
 

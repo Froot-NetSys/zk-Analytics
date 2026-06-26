@@ -22,7 +22,7 @@ SEED="${SEED:-0xA66A1E}"
 
 echo "[dev] building host + querier ..."
 cargo build -p aggregator --bin aggregator --release >/dev/null
-cargo build -p zktelemetry-risc0-querier-host --bin bench_queries --release >/dev/null
+cargo build -p querier-host --bin bench_queries --release >/dev/null
 HOST=target/release/aggregator
 BQ=target/release/bench_queries
 

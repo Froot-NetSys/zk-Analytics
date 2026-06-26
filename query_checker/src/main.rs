@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use zktelemetry_query_checker::{check_query_request, QueryPolicy, QueryRequest, QueryRuleReport};
+use query_checker::{check_query_request, QueryPolicy, QueryRequest, QueryRuleReport};
 
 fn print_query_rule_report(label: &str, report: &QueryRuleReport) {
     if report.ok {

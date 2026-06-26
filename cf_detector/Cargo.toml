@@ -17,7 +17,7 @@ serde = { version = "1", features = ["derive"] }
 
 # Query guest input/output structs and the embedded guest ELFs. These let the
 # detector build real ExecutorEnv inputs and run the real query guests.
-zktelemetry-risc0-querier-core = { path = "../querier/core" }
-zktelemetry-risc0-querier-methods = { path = "../querier/methods" }
-zktelemetry-risc0-aggr-core = { path = "../aggregator/core" }
-zktelemetry-risc0-common = { path = "../zkvm-common" }
+querier-core = { path = "../querier/core" }
+querier-methods = { path = "../querier/methods" }
+aggregator-core = { path = "../aggregator/core" }
+zkvm-common = { path = "../zkvm-common" }

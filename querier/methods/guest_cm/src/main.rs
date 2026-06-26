@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use risc0_zkvm::guest::env;
-use zktelemetry_risc0_querier_core::{run_cm_query, CmQueryInput, CmQueryOutput};
+use querier_core::{run_cm_query, CmQueryInput, CmQueryOutput};
 
 risc0_zkvm::guest::entry!(main);
 
