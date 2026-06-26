@@ -1,0 +1,4 @@
+[methods]
+aggr_samples = { path = "guest" }
+aggr_histogram = { path = "guest_histogram" }
+aggr_cm = { path = "guest_cm" }

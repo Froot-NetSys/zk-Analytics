@@ -1,0 +1,6 @@
+*.pcap
+*.gz
+*.txt
+__pycache__
+caida_txt/
+*.zip

@@ -1,0 +1,17 @@
+[package]
+name = "zktelemetry-common"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+fdb = ["foundationdb", "tokio"]
+
+[dependencies]
+anyhow = "1"
+bincode = "1"
+foundationdb = { version = "0.10", optional = true, features = ["fdb-7_1"] }
+rand = "0.8"
+rocksdb = "0.22"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt", "sync"], optional = true }

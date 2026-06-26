@@ -1,0 +1,8 @@
+[package]
+name = "aggr_cm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+risc0-zkvm = { version = "3", default-features = false }
+zktelemetry-risc0-aggr-core = { path = "../../core", default-features = false }

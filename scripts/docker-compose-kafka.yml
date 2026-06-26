@@ -1,0 +1,82 @@
+# Docker Compose for Kafka (local and distributed)
+#
+# Usage (local development):
+#   cd scripts
+#   docker-compose -f docker-compose-kafka.yml up -d
+#
+# Usage (distributed - allow remote clients):
+#   cd scripts
+#   KAFKA_EXTERNAL_IP=10.10.1.1 docker-compose -f docker-compose-kafka.yml up -d
+#
+# Kafka will be available at:
+#   - localhost:9092 (local clients)
+#   - <KAFKA_EXTERNAL_IP>:9092 (remote clients, if KAFKA_EXTERNAL_IP is set)
+#
+# To create the topic:
+#   docker exec kafka kafka-topics.sh --bootstrap-server localhost:9092 \
+#     --create --topic raw_events --partitions 16 --replication-factor 1
+#
+# To view messages:
+#   docker exec kafka kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+#     --topic raw_events --from-beginning
+#
+
+version: '3.8'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-log:/var/lib/zookeeper/log
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # For distributed setup, set KAFKA_EXTERNAL_IP to the machine's IP address
+      # This allows remote clients to connect via the external IP
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      # Use external IP if set, otherwise default to localhost (local-only mode)
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://${KAFKA_EXTERNAL_IP:-localhost}:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_MS: 604800000  # 7 days
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+
+  # Optional: Kafka UI for debugging
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+
+volumes:
+  zookeeper-data:
+  zookeeper-log:
+  kafka-data:

@@ -1,0 +1,7 @@
+[methods]
+querier_samples_bucket = { path = "guest" }
+querier_cm = { path = "guest_cm" }
+querier_histogram = { path = "guest_histogram" }
+querier_samples = { path = "guest_samples" }
+querier_series = { path = "guest_series" }
+querier_raw = { path = "guest_raw" }

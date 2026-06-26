@@ -1,0 +1,28 @@
+[package]
+name = "native-baseline"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Non-ZK native baseline for the SIGCOMM camera-ready evaluation.
+#
+# This crate runs the EXACT same aggregation/query analytics logic that the
+# RISC Zero guests run (the `process_*_aggr*` and `run_*_query` functions from
+# the shared `*-core` crates), but executes it natively on the host CPU with no
+# zkVM and no proof generation. It measures wall-clock runtime and peak RSS so
+# the paper can isolate the cost of zkVM proving from the cost of the analytics
+# architecture itself.
+#
+# It depends ONLY on the no_std core crates (not the `methods`/guest crates), so
+# building it does NOT trigger a RISC Zero guest ELF build.
+
+[[bin]]
+name = "native-baseline"
+path = "src/main.rs"
+
+[dependencies]
+zktelemetry-risc0-common = { path = "../zkvm-common" }
+zktelemetry-risc0-aggr-core = { path = "../aggregator/core" }
+zktelemetry-risc0-querier-core = { path = "../querier/core" }
+rand = "0.8"
+rayon = "1"

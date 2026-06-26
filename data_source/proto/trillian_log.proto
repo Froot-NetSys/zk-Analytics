@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+// Minimal, wire-compatible subset of Google Trillian's log API, sufficient to
+// append data-source checkpoints via QueueLeaf. Field numbers and the
+// service/method names match upstream Trillian
+// (github.com/google/trillian: trillian.proto, trillian_log_api.proto) so this
+// client talks to an unmodified Trillian log server. Fields we neither send nor
+// read (timestamps, charge_to, status) are omitted; proto3 ignores unknown
+// fields on the wire, so omission is forward/backward compatible.
+package trillian;
+
+// trillian.proto: LogLeaf
+message LogLeaf {
+  bytes merkle_leaf_hash = 1;     // server-computed; left empty by the client
+  bytes leaf_value = 2;           // the checkpoint bytes we append
+  bytes extra_data = 3;
+  int64 leaf_index = 4;
+  bytes leaf_identity_hash = 5;   // client-set for de-duplication
+}
+
+// trillian_log_api.proto: QueueLeafRequest
+message QueueLeafRequest {
+  int64 log_id = 1;
+  LogLeaf leaf = 2;
+}
+
+// trillian_log_api.proto: QueuedLogLeaf (status field 2 omitted)
+message QueuedLogLeaf {
+  LogLeaf leaf = 1;
+}
+
+// trillian_log_api.proto: QueueLeafResponse
+message QueueLeafResponse {
+  QueuedLogLeaf queued_leaf = 2;
+}
+
+// trillian_log_api.proto: service TrillianLog (only QueueLeaf is used)
+service TrillianLog {
+  rpc QueueLeaf(QueueLeafRequest) returns (QueueLeafResponse);
+}

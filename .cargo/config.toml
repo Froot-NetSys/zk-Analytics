@@ -1,0 +1,10 @@
+[env]
+# Avoid "Invalid cross-device link (os error 18 / EXDEV)" during rustc output
+# renames by keeping temp files on the same filesystem as the Cargo target dir
+# (default: `./target` under this workspace).
+#
+# Note: this directory must exist. Create it once with:
+#   mkdir -p target/tmp
+TMPDIR = { value = "target/tmp", relative = true }
+TMP = { value = "target/tmp", relative = true }
+TEMP = { value = "target/tmp", relative = true }

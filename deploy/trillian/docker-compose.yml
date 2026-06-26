@@ -1,0 +1,62 @@
+# Local Google Trillian verifiable-log stack for the data-source transparency
+# log (see docs/transparency_log.md). Brings up MySQL (with Trillian's schema),
+# a log server (gRPC :8090), and a log signer (sequences queued leaves).
+#
+#   docker compose -f deploy/trillian/docker-compose.yml up -d
+#   # create a tree and run the smoke test:
+#   scripts/trillian_smoke.sh
+#
+# After the stack is up, create a log/tree to get a TREE_ID (= TRILLIAN_LOG_ID).
+# Trillian >= v1.7.3 needs Go >= 1.25 to build createtree:
+#   docker run --rm --network host golang:1.25-alpine sh -c \
+#     'go install github.com/google/trillian/cmd/createtree@latest && \
+#      createtree --admin_server=127.0.0.1:8090'
+name: zktel-trillian
+
+services:
+  mysql:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: zaphod
+      MYSQL_DATABASE: test
+    volumes:
+      - ./storage.sql:/docker-entrypoint-initdb.d/storage.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pzaphod"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  trillian-log-server:
+    image: gcr.io/trillian-opensource-ci/log_server:latest
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command:
+      - "--storage_system=mysql"
+      - "--mysql_uri=root:zaphod@tcp(mysql:3306)/test"
+      - "--quota_system=mysql"
+      - "--rpc_endpoint=0.0.0.0:8090"
+      - "--http_endpoint=0.0.0.0:8091"
+      - "--alsologtostderr"
+    ports:
+      - "8090:8090"
+      - "8091:8091"
+
+  trillian-log-signer:
+    image: gcr.io/trillian-opensource-ci/log_signer:latest
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command:
+      - "--storage_system=mysql"
+      - "--mysql_uri=root:zaphod@tcp(mysql:3306)/test"
+      - "--quota_system=mysql"
+      - "--http_endpoint=0.0.0.0:8092"
+      - "--force_master"
+      - "--sequencer_interval=1s"
+      - "--batch_size=50"
+      - "--num_sequencers=1"
+      - "--alsologtostderr"
+    ports:
+      - "8092:8092"

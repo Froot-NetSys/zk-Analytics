@@ -1,0 +1,64 @@
+[package]
+name = "aggregator"
+version = "0.1.0"
+edition = "2021"
+default-run = "aggregator"
+
+[[bin]]
+name = "aggregator"
+path = "src/main.rs"
+
+[[bin]]
+name = "kafka-consumer"
+path = "src/bin/kafka_consumer.rs"
+required-features = ["kafka"]
+
+[[bin]]
+name = "reshard-controller"
+path = "src/bin/reshard_controller.rs"
+
+[[bin]]
+name = "recovery-bench"
+path = "src/bin/recovery_bench.rs"
+
+[[bin]]
+name = "chain-inspector"
+path = "src/bin/chain_inspector.rs"
+
+[[bin]]
+name = "reshard-bench"
+path = "src/bin/reshard_bench.rs"
+
+[[bin]]
+name = "handoff-sync"
+path = "src/bin/handoff_sync.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+fdb = ["zktelemetry-common/fdb"]
+kafka = ["dep:rdkafka"]
+
+[dependencies]
+anyhow = "1"
+hex = "0.4"
+rand = "0.8"
+rayon = "1.10"
+rdkafka = { version = "0.36", features = ["cmake-build"], optional = true }
+rocksdb = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+zktelemetry-common = { path = "../../common" }
+zktelemetry-risc0-common = { path = "../../zkvm-common" }
+zktelemetry-risc0-aggr-core = { path = "../core" }
+zktelemetry-risc0-aggr-methods = { path = "../methods" }
+
+# RISC Zero
+risc0-zkvm = "3"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,15 @@
+[package]
+name = "zktelemetry-risc0-querier-methods"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[package.metadata.risc0]
+# Note: guest_series and guest (bucket-based) removed - obsolete query formats
+methods = ["guest_cm", "guest_histogram", "guest_samples", "guest_raw"]
+
+[build-dependencies]
+risc0-build = "3"
+
+[dependencies]
+risc0-zkvm = "3"

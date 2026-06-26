@@ -1,0 +1,23 @@
+[package]
+name = "zktelemetry-risc0-querier-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+hex = "0.4"
+rand = "0.8"
+bincode = "1"
+sha2 = "0.10"
+zktelemetry-common = { path = "../../common" }
+zktelemetry-risc0-common = { path = "../../zkvm-common" }
+zktelemetry-risc0-aggr-core = { path = "../../aggregator/core" }
+zktelemetry-risc0-querier-core = { path = "../core" }
+zktelemetry-risc0-querier-methods = { path = "../methods" }
+
+# RISC Zero
+risc0-zkvm = "3"
+
+[[bin]]
+name = "bench_queries"
+path = "src/bin/bench_queries.rs"

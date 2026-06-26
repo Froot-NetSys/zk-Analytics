@@ -1,0 +1,46 @@
+[package]
+name = "data_source"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "data_source"
+path = "src/main.rs"
+
+[[bin]]
+name = "kafka-producer"
+path = "src/bin/kafka_producer.rs"
+required-features = ["kafka"]
+
+[[bin]]
+name = "trillian-smoke"
+path = "src/bin/trillian_smoke.rs"
+required-features = ["trillian"]
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+kafka = ["rdkafka"]
+# Publish data-source checkpoints to a Google Trillian verifiable log via gRPC.
+# Opt-in: pulls tonic/prost and needs `protoc` at build time. Without it the
+# transparency log degrades to a stderr-only no-op at runtime.
+trillian = ["dep:tonic", "dep:prost", "dep:tonic-build"]
+
+[dependencies]
+anyhow = "1"
+hex = "0.4"
+rand = "0.8"
+rayon = "1.10"
+rdkafka = { version = "0.36", features = ["cmake-build"], optional = true }
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
+tonic = { version = "0.12", optional = true }
+prost = { version = "0.13", optional = true }
+zktelemetry-risc0-common = { path = "../zkvm-common" }
+
+[build-dependencies]
+tonic-build = { version = "0.12", optional = true }

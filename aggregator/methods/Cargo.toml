@@ -1,0 +1,14 @@
+[package]
+name = "zktelemetry-risc0-aggr-methods"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[package.metadata.risc0]
+methods = ["guest", "guest_histogram", "guest_cm"]
+
+[build-dependencies]
+risc0-build = "3"
+
+[dependencies]
+risc0-zkvm = "3"

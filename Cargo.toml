@@ -1,0 +1,40 @@
+[workspace]
+members = [
+  # Shared libraries
+  "common",        # host-side storage backends (RocksDB / FoundationDB), DP, epochs
+  "zkvm-common",   # shared zkVM/guest types (Event, hash-chain), no_std
+
+  # Data sources (online log commitment)
+  "data_source",
+
+  # Distributed batch aggregation
+  "aggregator/core",
+  "aggregator/host",
+  "aggregator/methods",
+  "aggregator/methods/guest",
+  "aggregator/methods/guest_cm",
+  "aggregator/methods/guest_histogram",
+
+  # Verifiable query engine
+  "querier/core",
+  "querier/host",
+  "querier/server",
+  "querier/methods",
+  "querier/methods/guest",
+  "querier/methods/guest_cm",
+  "querier/methods/guest_histogram",
+  "querier/methods/guest_samples",
+  "querier/methods/guest_series",
+  "querier/methods/guest_raw",
+
+  # Evaluation / tooling
+  "native_baseline",
+  "query_checker",
+  "cf_detector",
+]
+
+# Vendored RISC Zero build tool (pinned to a different risc0 version; not part
+# of the workspace build — methods crates use risc0-build from crates.io).
+exclude = ["vendor/risc0-build"]
+
+resolver = "2"

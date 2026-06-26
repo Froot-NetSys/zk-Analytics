@@ -1,0 +1,23 @@
+[package]
+name = "cf_detector"
+version = "0.1.0"
+edition = "2021"
+description = "Differential secret-dependent-control-flow / output-leak detector for zkVM query guests (RISC0 executor, no proving)"
+
+[[bin]]
+name = "cf_detector"
+path = "src/main.rs"
+
+[dependencies]
+# In-process RISC0 executor (execution only; the `prove` feature gives us
+# ExecutorImpl / a local executor so we never need an external r0vm subprocess).
+risc0-zkvm = { version = "3", features = ["prove"] }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+
+# Query guest input/output structs and the embedded guest ELFs. These let the
+# detector build real ExecutorEnv inputs and run the real query guests.
+zktelemetry-risc0-querier-core = { path = "../querier/core" }
+zktelemetry-risc0-querier-methods = { path = "../querier/methods" }
+zktelemetry-risc0-aggr-core = { path = "../aggregator/core" }
+zktelemetry-risc0-common = { path = "../zkvm-common" }
