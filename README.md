@@ -1,125 +1,104 @@
 # zk-Analytics
 
-`zk-Analytics` is a Rust workspace with 2 long-running services:
+`zk-Analytics` is a distributed, end-to-end **verifiable, privacy-preserving cloud
+analytics** system. It augments an analytics pipeline with lightweight append-only
+log commitments and zero-knowledge proofs of correct aggregation and query
+execution, so an external verifier can check reported results **without** access to
+raw logs or the provider's infrastructure. Proofs are generated with the
+[RISC Zero](https://risczero.com) zkVM. This repository is the implementation
+described in the paper *"Zero-Knowledge Cloud Analytics."*
 
-- `aggregator`: consumes events from Kafka, batches them into epochs (by `EPOCH_LENGTH` or timeout), and generates ZK proofs:
-  - `cm_epoch (epoch_type=cm_epoch)`: merges across `source_id` for the same `sequence`, generates a **CM-merge proof** and stores an aggregate epoch.
-  - `histogram_epoch (epoch_type=histogram_epoch)`: merges across `source_id` for the same `sequence`, generates a **histogram-merge proof** and stores an aggregate epoch.
-  - `samples_epoch (epoch_type=samples_epoch)`: **verify-only**; stores verified frames and does not generate a new hash chain.
-- `querier`: HTTP API that queries epochs over a time window and returns **(answer + proof)** for the window merge + query.
+## Architecture
 
-It also includes:
+The pipeline has three logically separated stages (paper §4–5):
 
-- `aggregator` receiver mode: an HTTP receiver that accepts raw `(key_id,value)` events, verifies a Poseidon hash-chain over the events (like `poseidon_bytes` mode’s hash function), and feeds events into one of the per-epoch collector modes.
-- `data_source`: a simple event generator that streams `(key_id,value)` events to the collector receiver.
+1. **Online commitment — `data_source/`.** Each data source emits time-series
+   `(timestamp, key, value)` log entries and incrementally commits to them with a
+   lightweight **SHA-256 hash chain** (one constant-size update per log). Committed
+   batches are streamed to the provider through a Kafka dispatcher, and each source
+   may publish hash-chain checkpoints to a public transparency log (Trillian — see
+   `deploy/trillian/` and `docs/transparency_log.md`).
+2. **Offline distributed aggregation — `aggregator/`.** Shared-nothing aggregators
+   consume committed batches from Kafka into a local RocksDB buffer, group them into
+   fixed-size epochs, and run a RISC Zero **guest** that verifies the source
+   hash-chain and aggregates the epoch into a query-ready summary (per-key samples,
+   histograms, or a Count-Min sketch). Each epoch is chained to the previous one and
+   persisted; its aggregate state is stored in RocksDB or FoundationDB.
+3. **Offline query + verification — `querier/`.** An HTTP service answers analytics
+   queries over a time window, returning the **answer plus a RISC Zero proof** that
+   the window's epochs are authentic (epoch-chain + commitment checks) and that the
+   query was executed correctly. Verifiers validate the proof offline, without raw
+   logs or provider infrastructure.
 
-## Requirements
-CPU types support AVX-512. 
+### Crates
 
-Build dependencies (Ubuntu/Debian):
+| Crate (package) | Path | Role |
+|-----------------|------|------|
+| `data_source` | `data_source/` | log generation + SHA-256 commitment; Kafka producer; Trillian checkpoints |
+| `aggregator` | `aggregator/host/` | epoch aggregation + RISC Zero proving; Kafka consumer; resharding tools |
+| `zktelemetry-risc0-aggr-core` | `aggregator/core/` | `no_std` aggregation logic shared by host + guests |
+| `aggr_samples` / `aggr_cm` / `aggr_histogram` | `aggregator/methods/guest*` | RISC Zero aggregation guests: samples / Count-Min / histogram |
+| `querier` | `querier/server/` | HTTP query service + RISC Zero proving |
+| `zktelemetry-risc0-querier-core` (+ guests) | `querier/{core,methods}/` | query logic + RISC Zero query guests |
+| `zktelemetry-common` | `common/` | RocksDB / FoundationDB stores, epoch types, differential privacy |
+| `zktelemetry-risc0-common` | `zkvm-common/` | shared `no_std` zkVM types (`Event`, hash-chain) |
+| `zktelemetry-query-checker` | `query_checker/` | query allow/block-list access control (§5.4) |
+| `cf_detector` | `cf_detector/` | control-flow / output leakage detector for query guests (§5.4) |
+| `native-baseline` | `native_baseline/` | non-ZK baseline running the same analytics natively (evaluation) |
+
+## Build
 
 ```bash
+# RocksDB bindings need clang/libclang:
 sudo apt-get update
 sudo apt-get install -y clang libclang-dev
+
+# Optional features: Kafka (rdkafka, cmake-build) and Trillian (protoc):
+sudo apt-get install -y cmake libssl-dev pkg-config protobuf-compiler
+
+# RISC Zero toolchain (guest compiler + r0vm):
+curl -L https://risczero.com/install | bash && rzup install
+
+cargo build --release        # host crates + RISC Zero guest ELFs
 ```
 
-## Streaming Event Receiver (collector) + Data Source
+Proof **generation** uses AVX-512 for performance; proof **verification** does not.
+FoundationDB 7.1 is required only for the FDB-backed (`--features fdb`) path.
 
-### Wire format
+## Run
 
-`POST /event` JSON body:
-
-- `seq: u64` (must be contiguous starting from 0)
-- `ts_ns: u64`
-- `key_id: u64`
-- `value: u32`
-- `chain_hash_hex: String` (32-byte hex, Poseidon hash-chain tip after applying this event)
-- (optional) `proof_kind: u8` (0 = recursive, 1 = compressed)
-- (optional) `proof_b64: String` (base64 of a bincode-serialized Nova proof for a single event-step)
-
-The event bytes for hashing are `ts_ns (BE u64) || key_id (BE u64) || value (BE u32)`, padded with the same `poseidon_bytes` padding and hashed with `Poseidon(h_prev, chunk31)` (1 step per event).
-
-### Run collector receiver
+Each service is a Cargo binary. End-to-end, committed batches flow
+`data_source → Kafka → aggregator → RocksDB/FoundationDB → querier`.
 
 ```bash
-cd zk-Analytics/aggregator
-SERVICE_MODE=receiver RECEIVER_ADDR=${COLLECTOR_IP}:9000 EPOCH_TYPE=samples_epoch EPOCH_EVENTS=1000 cargo run --release -q
+# Aggregator: consume a Kafka topic into a local RocksDB buffer and prove epochs
+# of type samples | histogram | cm (add --features fdb to store aggregates in FDB).
+cargo run -p aggregator --release --features kafka -- --mode samples
+
+# Data source: stream events as a Kafka producer (per-source SHA-256 hash chain).
+cargo run -p data_source --bin kafka-producer --release --features kafka -- \
+  --events 100000 --batch-size 100
+
+# Querier: HTTP query service (default HTTP_LISTEN=0.0.0.0:8082).
+cargo run -p querier --release
 ```
 
-Or from the workspace root:
+For a full local run (Kafka + FoundationDB via Docker, orchestrated in tmux):
 
 ```bash
-cd zk-Analytics
-EPOCH_TYPE=samples_epoch EPOCH_EVENTS=1000 ./scripts/run_collector_receiver.sh
+./scripts/setup_local_e2e.sh --all   # install deps, Kafka/FDB, RISC Zero toolchain
+./scripts/run_local_e2e.sh start      # data_source -> Kafka -> aggregator -> FDB -> querier
+./scripts/run_local_e2e.sh status
 ```
 
-Supported `EPOCH_TYPE`: `samples_epoch`, `histogram_epoch_per_key`, `cm_epoch_per_key`, `histogram_epoch`, `cm_epoch`.
+Additional binaries: `aggregator/host` also builds `kafka-consumer`,
+`reshard-controller`, `chain-inspector`, `recovery-bench`, `reshard-bench`, and
+`handoff-sync`; `data_source` builds `kafka-producer` and `trillian-smoke`;
+`querier/host` builds `bench_queries`. Reset local state with
+`./scripts/reset_rocksdb.sh` (and `./scripts/reset_fdb.sh` for FoundationDB).
 
-If the data source sends per-sample Nova proofs, the receiver can verify them (default on):
-
-```bash
-RECEIVER_VERIFY_PROOF=1 VERIFY_PROGRESS_EVERY=100
-```
-
-### Run data_source
-
-```bash
-cd zk-Analytics
-RECEIVER_URL=http://${COLLECTOR_IP}:9000/event EVENTS=10000 PROGRESS_EVERY=100 PROOF_COMPRESS=0 ./scripts/run_data_source_http.sh
-```
-
-### Modes overview (data_source / aggregator / querier)
-
-data_source (`MODE`):
-- `stream`: synthetic events to `RECEIVER_URL` (hash-chain only, no per-event proofs).
-- `stream_prove`: synthetic events + per-event Nova proofs (slow).
-- `stream_tsv`: replay TSV traces (timestamps re-based), no per-event proofs.
-- `stream_tsv_prove`: TSV replay + per-event proofs (slow).
-- `bench`: local Poseidon hash-chain benchmark (no HTTP unless `BENCH_HTTP=1`).
-- `bench_prove`: local per-event Nova proving benchmark.
-
-aggregator (`SERVICE_MODE` + `EPOCH_TYPE`):
-- `SERVICE_MODE=receiver`: HTTP receiver that accepts events; set `EPOCH_TYPE` to choose the epoch type produced.
-- `SERVICE_MODE=local`: local proving/bench mode; set `EPOCH_TYPE` to the epoch type to prove.
-
-aggregator receiver (`EPOCH_TYPE`, only when `SERVICE_MODE=receiver`):
-- `samples_epoch`, `histogram_epoch`, `cm_epoch`, `histogram_epoch_per_key`, `cm_epoch_per_key`
-
-querier (behavior toggles):
-- `DIRECT_FROM_INGESTOR=1`: read/verify `epoch_frames` directly; `0` uses aggregate tables.
-- `VERIFY_CHAIN_CHECKPOINT=1`: verify hash-chain continuity (with checkpoints).
-- `CHAIN_VERIFY_DEBUG=1`: verbose chain-verify logs.
-- `PROOF_COMPRESS=1`: return compressed proofs in responses.
-- `DP_ENABLED=1`: enable differential privacy offsets in responses.
-
-### Benchmark data_source Poseidon chain (per-event)
-
-This benchmarks the data_source’s per-event Poseidon chain update (input bytes = 20) and optionally the HTTP POST overhead:
-
-```bash
-cd zk-Analytics/data_source
-EVENTS=100000 PROGRESS_EVERY=10000 BENCH_HTTP=0 ./scripts/bench_poseidon_sample20.sh
-```
-
-To include receiver roundtrip time:
-
-```bash
-cd zk-Analytics/data_source
-RECEIVER_URL=http://${COLLECTOR_IP}:9000/event BENCH_HTTP=1 EVENTS=100000 PROGRESS_EVERY=10000 ./scripts/bench_poseidon_sample20.sh
-```
-
-### Benchmark data_source Nova proof (Poseidon chain)
-
-This generates a Nova recursive proof that the Poseidon hash-chain over `EVENTS` samples is correct.
-
-```bash
-cd zk-Analytics/data_source
-EVENTS=10000 PROGRESS_EVERY=1000 PROOF_COMPRESS=0 ./scripts/bench_poseidon_sample20_prove.sh
-```
-
-Notes:
-- These scripts read configuration from environment variables; don’t pass `EVENTS=...` as a positional argument to `bash ...`.
-- `bench_poseidon_sample20_prove.sh` can be very slow for large `EVENTS`; try a small run first, e.g. `EVENTS=200 PROGRESS_EVERY=50`.
+The default `data_source` binary is a standalone SHA-256 hash-chain microbenchmark
+(`BENCH_INPUT`, `PARALLEL_CHAINS`, `VALUE_ZIPF_S`, `TS_MODE`), independent of Kafka.
 
 ## RocksDB
 
@@ -148,23 +127,23 @@ ROCKSDB_PATH=/mydata/rocksdb ./scripts/reset_rocksdb.sh
 
 ### What it does
 
-It polls `epoch_frames`, verifies each per-source Nova proof (host-side), and:
+It polls `epoch_frames`, verifies each per-source RISC Zero proof (host-side), and:
 
 - For `cm_epoch (epoch_type=cm_epoch)`:
   - merges **CM array** by element-wise sum
   - merges **topk heap** by key (sum counts for matching keys)
-  - produces a Nova merge proof (`CmMergeStep`)
+  - produces a RISC Zero merge proof (the `aggr_cm` guest)
   - stores structured CM into `agg_cm_struct` and the Poseidon `result_commit` into `agg_epochs`
   - stores the aggregate into `agg_epochs` and deletes the original per-source rows for that `(epoch_type, sequence)`
 - For `histogram_epoch (epoch_type=histogram_epoch)`:
   - merges bucket counts by bucket (sum)
-  - produces a Nova merge proof (`HistogramMergeStep`)
+  - produces a RISC Zero merge proof (the `aggr_histogram` guest)
   - stores structured histogram into `agg_hist_struct` and the Poseidon `result_commit` into `agg_epochs`
   - stores the aggregate into `agg_epochs` and deletes the original per-source rows for that `(epoch_type, sequence)`
 - For `samples_epoch (epoch_type=samples_epoch)`:
   - verify-only: moves rows from `epoch_frames` into `verified_epoch_frames`
   - extracts `(out_commit,total_count,total_sum)` from the verified proof output, computes a Poseidon `result_commit`, and stores into `verified_samples_struct` (the stored samples table is `(key,key_chain_tip,len,sum,occ)`; `key_chain_tip` is a Poseidon chain over that key’s values, preserving per-key order only)
-  - the per-source `chain_hash` is computed by the Nova circuit as `Poseidon(Poseidon(chain_prev, TAG_FINALIZE), out_commit)` where `out_commit` is a commutative sum of Poseidon digests over `(key,key_chain_tip,len,sum)` for occupied slots (so cross-key reordering does not change the commitment)
+  - the per-source `chain_hash` is computed by the zkVM guest as `Poseidon(Poseidon(chain_prev, TAG_FINALIZE), out_commit)` where `out_commit` is a commutative sum of Poseidon digests over `(key,key_chain_tip,len,sum)` for occupied slots (so cross-key reordering does not change the commitment)
 
 ### Config
 
@@ -268,7 +247,7 @@ See `docs/EVALUATION_ONLINE_RESHARDING.md`.
 `querier` serves `POST /query`:
 
 - Loads epochs in a time window from aggregator tables (`agg_epochs` / `agg_*` / `verified_samples_struct`)
-- Builds a Nova proof that checks:
+- Builds a RISC Zero proof that checks:
   - each epoch struct matches its `epoch_commit` (Poseidon commitment recomputed in-circuit)
   - commitments are bound into a window digest (Poseidon fold)
   - window merge + query result are correct
@@ -278,7 +257,7 @@ See `docs/EVALUATION_ONLINE_RESHARDING.md`.
 
 - `HTTP_LISTEN` (default: `${QUERIER_IP}:8082`)
 - `ROCKSDB_PATH`
-- `PROOF_COMPRESS=1` to return compressed Nova proofs (default `0` = recursive)
+- `PROOF_COMPRESS=1` to return compressed RISC Zero (Groth16) proofs (default `0` = recursive receipts)
 
 ### Run
 

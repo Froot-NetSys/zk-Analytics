@@ -133,7 +133,7 @@ cargo run --release --features 'kafka fdb'" Enter
     # Window 1: Data Source (Kafka producer) - wait for aggregator to build
     tmux new-window -t "$SESSION_NAME" -n "datasource"
     tmux send-keys -t "$SESSION_NAME:1" "echo 'Waiting 30s for aggregator to build...' && sleep 30 && \
-cd $ROOT_DIR/data_source/host && \
+cd $ROOT_DIR/data_source && \
 KAFKA_BROKERS=$KAFKA_BROKERS \
 KAFKA_TOPIC=$KAFKA_TOPIC \
 SOURCE_ID=$SOURCE_ID \
