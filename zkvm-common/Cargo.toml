@@ -5,12 +5,7 @@ edition = "2021"
 
 [dependencies]
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
-ff = { version = "0.13", default-features = false }
-halo2curves = { version = "0.9", default-features = false, features = ["bits"] }
-risc0-zkp = { version = "3", default-features = false, optional = true }
-risc0-core = { version = "3", default-features = false, optional = true }
 
 [features]
 default = ["std"]
 std = ["serde/std"]
-risc0-hash = ["dep:risc0-zkp", "dep:risc0-core"]

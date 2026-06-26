@@ -133,17 +133,17 @@ It polls `epoch_frames`, verifies each per-source RISC Zero proof (host-side), a
   - merges **CM array** by element-wise sum
   - merges **topk heap** by key (sum counts for matching keys)
   - produces a RISC Zero merge proof (the `aggr_cm` guest)
-  - stores structured CM into `agg_cm_struct` and the Poseidon `result_commit` into `agg_epochs`
+  - stores structured CM into `agg_cm_struct` and the SHA-256 `result_commit` into `agg_epochs`
   - stores the aggregate into `agg_epochs` and deletes the original per-source rows for that `(epoch_type, sequence)`
 - For `histogram_epoch (epoch_type=histogram_epoch)`:
   - merges bucket counts by bucket (sum)
   - produces a RISC Zero merge proof (the `aggr_histogram` guest)
-  - stores structured histogram into `agg_hist_struct` and the Poseidon `result_commit` into `agg_epochs`
+  - stores structured histogram into `agg_hist_struct` and the SHA-256 `result_commit` into `agg_epochs`
   - stores the aggregate into `agg_epochs` and deletes the original per-source rows for that `(epoch_type, sequence)`
 - For `samples_epoch (epoch_type=samples_epoch)`:
   - verify-only: moves rows from `epoch_frames` into `verified_epoch_frames`
-  - extracts `(out_commit,total_count,total_sum)` from the verified proof output, computes a Poseidon `result_commit`, and stores into `verified_samples_struct` (the stored samples table is `(key,key_chain_tip,len,sum,occ)`; `key_chain_tip` is a Poseidon chain over that key’s values, preserving per-key order only)
-  - the per-source `chain_hash` is computed by the zkVM guest as `Poseidon(Poseidon(chain_prev, TAG_FINALIZE), out_commit)` where `out_commit` is a commutative sum of Poseidon digests over `(key,key_chain_tip,len,sum)` for occupied slots (so cross-key reordering does not change the commitment)
+  - extracts `(out_commit,total_count,total_sum)` from the verified proof output, computes a SHA-256 `result_commit`, and stores into `verified_samples_struct` (the stored samples table is `(key,key_chain_tip,len,sum,occ)`; `key_chain_tip` is a SHA-256 chain over that key’s values, preserving per-key order only)
+  - the per-source `chain_hash` is computed by the zkVM guest as `SHA-256(SHA-256(chain_prev || TAG_FINALIZE) || out_commit)` where `out_commit` is a commutative sum of SHA-256 digests over `(key,key_chain_tip,len,sum)` for occupied slots (so cross-key reordering does not change the commitment)
 
 ### Config
 
@@ -248,8 +248,8 @@ See `docs/EVALUATION_ONLINE_RESHARDING.md`.
 
 - Loads epochs in a time window from aggregator tables (`agg_epochs` / `agg_*` / `verified_samples_struct`)
 - Builds a RISC Zero proof that checks:
-  - each epoch struct matches its `epoch_commit` (Poseidon commitment recomputed in-circuit)
-  - commitments are bound into a window digest (Poseidon fold)
+  - each epoch struct matches its `epoch_commit` (SHA-256 commitment recomputed in-circuit)
+  - commitments are bound into a window digest (SHA-256 fold)
   - window merge + query result are correct
   - (optional) if `SAMPLES_BIND_RAW=1`, also recomputes `samples_epoch` per-key chains from `sample_events` (ordered by `idx`) and rejects epochs whose `out_commit` / table do not match
 

@@ -4,9 +4,6 @@ extern crate alloc;
 
 use serde::{Deserialize, Serialize};
 
-pub mod poseidon_pasta;
-#[cfg(feature = "risc0-hash")]
-pub mod risc0_hash;
 
 pub const KEY_BYTES_LEN: usize = 15;
 pub const VALUE_BYTES_LEN: usize = 4;
@@ -17,7 +14,6 @@ pub const HASH_BYTES_LEN: usize = 32;
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ChainHashFn {
     Sha256,
-    Poseidon2,
 }
 
 impl Default for ChainHashFn {
@@ -30,14 +26,12 @@ impl ChainHashFn {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Sha256 => "sha256",
-            Self::Poseidon2 => "poseidon2",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         match s.trim().to_ascii_lowercase().as_str() {
             "sha256" | "sha-256" => Some(Self::Sha256),
-            "poseidon2" | "poseidon-2" => Some(Self::Poseidon2),
             _ => None,
         }
     }
