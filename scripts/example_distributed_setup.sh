@@ -7,7 +7,7 @@
 export REMOTE_MACHINES="10.10.1.9 10.10.1.10 10.10.1.11 10.10.1.12"
 
 # SSH username for remote machines
-export SSH_USER="zz_y"
+export SSH_USER="${SSH_USER:-$USER}"
 
 # Remote project directory (will be created if doesn't exist)
 export REMOTE_PROJECT_DIR="/mydata/zk-Analytics"

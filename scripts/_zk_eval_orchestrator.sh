@@ -15,7 +15,7 @@ nuke(){ bash -c "$KILL" || true; for n in 1 2 3 4 5 6 7; do timeout 8 ssh -o Str
 
 gitcp(){ # $1 = commit message
   git add -A results/ scripts/ >/dev/null 2>&1
-  git -c user.name=zzylol -c user.email=zeyingz@umd.edu commit -q -m "$1" >/dev/null 2>&1 \
+  git commit -q -m "$1" >/dev/null 2>&1 \
     && git push origin HEAD:camera-ready/non-zk-baseline >/dev/null 2>&1 \
     && say "committed+pushed: $1" || say "nothing to commit / push failed: $1"
 }

@@ -17,7 +17,7 @@ export AGGREGATOR_MACHINES="10.10.1.2 10.10.1.3 10.10.1.4 10.10.1.5"
 export QUERIER_MACHINE="10.10.1.6"
 
 # SSH configuration
-export SSH_USER="zz_y"
+export SSH_USER="${SSH_USER:-$USER}"
 export REMOTE_PROJECT_DIR="/mydata/zk-Analytics"
 
 # ============================================

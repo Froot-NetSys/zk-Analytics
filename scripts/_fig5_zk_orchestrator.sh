@@ -44,7 +44,7 @@ print(",".join(str(x) for x in [var,mode,
 PY
 }
 gitcp(){ git add -A results/ scripts/ >/dev/null 2>&1
-  git -c user.name=zzylol -c user.email=zeyingz@umd.edu commit -q -m "$1" >/dev/null 2>&1 \
+  git commit -q -m "$1" >/dev/null 2>&1 \
     && git push origin HEAD:camera-ready/non-zk-baseline >/dev/null 2>&1 && say "pushed: $1" || say "no-commit/push-fail: $1"; }
 
 for spec in ${FIG5_SPECS:-histogram:8 samples:8 cm:8 histogram:1}; do

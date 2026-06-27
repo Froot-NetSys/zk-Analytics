@@ -1,0 +1,44 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+title: "zk-Analytics"
+abstract: >-
+  A distributed, end-to-end verifiable and privacy-preserving cloud analytics
+  system. zk-Analytics augments analytics pipelines with lightweight append-only
+  log commitments (SHA-256 hash chains) and zero-knowledge proofs of correct
+  aggregation and query execution using the RISC Zero zkVM, so external verifiers
+  can check reported results without access to raw logs or provider infrastructure.
+type: software
+license: MIT
+repository-code: "https://github.com/Froot-NetSys/zk-Analytics"
+authors:
+  - family-names: Zhu
+    given-names: Zeying
+    affiliation: "University of Maryland, College Park"
+  - family-names: Lam
+    given-names: Clarence
+    affiliation: "University of Maryland, College Park"
+  - family-names: Frolov
+    given-names: Alexander
+    affiliation: "University of Maryland, College Park"
+  - family-names: Miers
+    given-names: Ian
+    affiliation: "University of Maryland, College Park"
+  - family-names: Liu
+    given-names: Zaoxing
+    affiliation: "University of Maryland, College Park"
+preferred-citation:
+  type: conference-paper
+  title: "Zero-Knowledge Cloud Analytics"
+  year: 2026
+  collection-title: "Proceedings of the ACM SIGCOMM 2026 Conference"
+  authors:
+    - family-names: Zhu
+      given-names: Zeying
+    - family-names: Lam
+      given-names: Clarence
+    - family-names: Frolov
+      given-names: Alexander
+    - family-names: Miers
+      given-names: Ian
+    - family-names: Liu
+      given-names: Zaoxing

@@ -65,6 +65,22 @@ cargo build --release        # host crates + RISC Zero guest ELFs
 Proof **generation** uses AVX-512 for performance; proof **verification** does not.
 FoundationDB 7.1 is required only for the FDB-backed (`--features fdb`) path.
 
+### Hardware & runtime
+
+The paper's measurements were taken on a CloudLab node with an Intel Xeon Gold
+5512U (up to 56 cores), 128 GB RAM, NVMe SSD, and AVX-512. To reproduce the ZK
+numbers you want a comparable machine: an **AVX-512 CPU with many cores** and
+**≥ 64 GB RAM** (the zkVM prover peaks around 9–10 GB per aggregation/query
+node, but parallel proving across cores needs headroom). Verification, the
+native (non-ZK) baselines, and functional smoke tests run on a modest laptop.
+
+zkVM **proof generation is expensive** and dominates end-to-end latency:
+aggregating 131K logs takes roughly **1.5 h** (histogram / sum-per-key) to
+**4 h** (Count-Min) with 8 aggregators; single-machine aggregation and query
+proofs at the paper's largest sizes take **hours**. Plan runs accordingly — see
+[`ARTIFACT-EVALUATION.md`](ARTIFACT-EVALUATION.md) for a per-experiment time and
+hardware guide and the reproduction walkthrough.
+
 ## Run
 
 Each service is a Cargo binary. End-to-end, committed batches flow
