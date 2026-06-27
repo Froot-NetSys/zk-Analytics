@@ -33,8 +33,4 @@ members = [
   "cf_detector",
 ]
 
-# Vendored RISC Zero build tool (pinned to a different risc0 version; not part
-# of the workspace build — methods crates use risc0-build from crates.io).
-exclude = ["vendor/risc0-build"]
-
 resolver = "2"

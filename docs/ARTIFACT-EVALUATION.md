@@ -113,7 +113,7 @@ These need multiple machines reachable over SSH. Copy
 `scripts/distributed_e2e_config.example.sh`, set `SSH_USER`, the node IPs
 (`scripts/ip_defaults.sh`), and `KAFKA_BROKERS`/`FDB_*`, then drive the runs with
 `scripts/run_distributed_baseline.sh` / `run_table2_sweep.sh`. See
-`scripts/DISTRIBUTED_SETUP.md` and `scripts/DISTRIBUTED_E2E_GUIDE.md`. On a
+`docs/DISTRIBUTED_SETUP.md` and `docs/DISTRIBUTED_E2E_GUIDE.md`. On a
 single machine you can still reproduce the **native** distributed cells and all
 single-machine ZK results above.
 

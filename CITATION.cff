@@ -6,7 +6,7 @@ abstract: >-
   system. zk-Analytics augments analytics pipelines with lightweight append-only
   log commitments (SHA-256 hash chains) and zero-knowledge proofs of correct
   aggregation and query execution using the RISC Zero zkVM, so external verifiers
-  can check reported results without access to raw logs or provider infrastructure.
+  can check reported results without access to raw logs.
 type: software
 license: MIT
 repository-code: "https://github.com/Froot-NetSys/zk-Analytics"

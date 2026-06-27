@@ -65,21 +65,13 @@ cargo build --release        # host crates + RISC Zero guest ELFs
 Proof **generation** uses AVX-512 for performance; proof **verification** does not.
 FoundationDB 7.1 is required only for the FDB-backed (`--features fdb`) path.
 
-### Hardware & runtime
+### Hardware requirements
 
-The paper's measurements were taken on a CloudLab node with an Intel Xeon Gold
-5512U (up to 56 cores), 128 GB RAM, NVMe SSD, and AVX-512. To reproduce the ZK
-numbers you want a comparable machine: an **AVX-512 CPU with many cores** and
-**≥ 64 GB RAM** (the zkVM prover peaks around 9–10 GB per aggregation/query
-node, but parallel proving across cores needs headroom). Verification, the
-native (non-ZK) baselines, and functional smoke tests run on a modest laptop.
-
-zkVM **proof generation is expensive** and dominates end-to-end latency:
-aggregating 131K logs takes roughly **1.5 h** (histogram / sum-per-key) to
-**4 h** (Count-Min) with 8 aggregators; single-machine aggregation and query
-proofs at the paper's largest sizes take **hours**. Plan runs accordingly — see
-[`ARTIFACT-EVALUATION.md`](ARTIFACT-EVALUATION.md) for a per-experiment time and
-hardware guide and the reproduction walkthrough.
+- **CPU**: x86-64 with **AVX-512**; many cores recommended (the zkVM prover
+  scales with core count).
+- **RAM**: **≥ 64 GB** — the zkVM prover peaks around 9–10 GB per
+  aggregation/query node.
+- **Storage**: NVMe SSD (RocksDB / FoundationDB backing store).
 
 ## Run
 
@@ -107,14 +99,6 @@ For a full local run (Kafka + FoundationDB via Docker, orchestrated in tmux):
 ./scripts/run_local_e2e.sh status
 ```
 
-Additional binaries: `aggregator/host` also builds `kafka-consumer`,
-`reshard-controller`, `chain-inspector`, `recovery-bench`, `reshard-bench`, and
-`handoff-sync`; `data_source` builds `kafka-producer` and `trillian-smoke`;
-`querier/host` builds `bench_queries`. Reset local state with
-`./scripts/reset_rocksdb.sh` (and `./scripts/reset_fdb.sh` for FoundationDB).
-
-The default `data_source` binary is a standalone SHA-256 hash-chain microbenchmark
-(`BENCH_INPUT`, `PARALLEL_CHAINS`, `VALUE_ZIPF_S`, `TS_MODE`), independent of Kafka.
 
 ## RocksDB
 
@@ -179,82 +163,7 @@ cd zk-Analytics
 ROCKSDB_PATH=/mydata/rocksdb INIT_DB=1 cargo run -p aggregator
 ```
 
-### Recovery semantics
-
-Each completed epoch writes an `EpochTombstone` row (keyed by `(epoch_type,
-aggregator_id, sequence)`) inside the same atomic RocksDB `WriteBatch` as the
-rest of the epoch's rows (`agg_epoch`, the per-mode struct, `agg_epoch_meta`,
-`agg_epoch_proof`). The tombstone's presence is the single source of truth for
-"this epoch is fully done" — `has_agg_epoch` is no longer authoritative,
-because a crash mid-WriteBatch can leave any subset of the per-epoch rows on
-disk.
-
-On startup, `recover_partial_state()` runs once before the polling loop. It
-looks up the highest tombstoned sequence (`max_done`) for the current
-`(epoch_type, aggregator_id)` pair and scans a small window of `[max_done-5,
-max_done+5]`. For each sequence in the window with no tombstone but any of the
-related rows present, it deletes those orphaned rows in a single `WriteBatch`
-and logs `[native-aggr][recover] max_done=… orphans_cleaned=…`. The polling
-loop then re-processes those sequences from scratch.
-
-The cross-epoch chain hash is unaffected because each subsequent epoch's
-`prev_chain_hash` is read from the previous epoch's `final_chain_hash`, which
-is only persisted as part of the per-mode struct row — and that row only
-survives if its accompanying tombstone was written.
-
-### Online resharding
-
-Moves a `source_id` from one aggregator to another at an epoch boundary while
-preserving its per-source SHA-256 chain. The data plane is implemented and
-verified end-to-end for arbitrary X→Y reshards (scale up or down), including a
-real zkVM proof that verifies across a handoff — see
-`docs/EVALUATION_ONLINE_RESHARDING.md`.
-
-- Three record types in `common/src/rocksdb_store.rs` (mirrored in
-  `common/src/fdb_store.rs`):
-  - `OwnershipEpoch { epoch_seq, assignments: Vec<(source_id, aggregator_id)>, installed_at_ms }`
-    becomes active at `epoch_seq` and stays active until a higher-seq row
-    overrides it.
-  - `Handoff { source_id, at_epoch, from_aggregator, to_aggregator, chain_tip, last_seq, published_at_ms }`
-    records a source's ownership transition (for audit).
-  - `AggSourceTip { source_id, last_seq, chain_tip, owner, updated_at_epoch }`
-    is the durable per-source chain tip — persisted atomically with each epoch
-    and inherited by a source's new owner so its chain continues across the
-    handoff (see the Security note below).
-- A pure read function `current_owner_for_source(db, source_id, epoch_seq, default_aggregator)`
-  walks the OwnershipEpoch rows and returns the assigned aggregator, or
-  the default if none. Unit-tested via `ownership_lookup_basic`.
-- A one-shot manual control-plane tool, `reshard-controller`
-  (`aggregator/host/src/bin/reshard_controller.rs`), takes
-  `--rocksdb-path`, `--at-epoch N`, `--map "src:agg,..."`, validates
-  that `N` is strictly in the future relative to
-  `EpochBatcherState.next_epoch_seq`, and writes one OwnershipEpoch row.
-
-Aggregators opt in with `--use-online-ownership` (or `USE_ONLINE_OWNERSHIP=1`).
-When unset, behaviour is identical to existing static partitioning.
-
-Reshards are triggered manually via `reshard-controller`; an automatic
-controller-driven rebalancer (a polling controller that decides *when* and
-*how* to rebalance) is **future work**.
-
-Security: the SHA-256 per-source chain is preserved across a handoff. Each
-aggregator durably persists the tip of every source it owns as an
-`AggSourceTip` row (committed atomically with the epoch); when a source is
-reassigned, the new owner inherits that tip — propagated through the
-coordination store, with the `Handoff` row recording the transition for audit —
-and continues the chain from it instead of restarting from zero. The new
-owner's first post-handoff batch is verified to chain from the inherited tip:
-on the real ingest path the aggregator refuses to extend (and the zkVM proof
-fails to verify) if the tip does not match, so a buggy or malicious controller
-cannot silently re-seat a source onto a fork. This holds for an arbitrary X→Y
-reshard (scale up or down); see `docs/EVALUATION_ONLINE_RESHARDING.md` for the
-end-to-end verification (including a real zkVM proof that verifies across a
-handoff).
-
-Evaluation harnesses: `scripts/bench_resharding_xy.sh` (general X→Y reshard,
-scale up & down), `scripts/bench_resharding_real.sh` (real raw_db path, chain
-verified), `scripts/prove_handoff_demo.sh` (real zkVM proof across a handoff).
-See `docs/EVALUATION_ONLINE_RESHARDING.md`.
+> Recovery semantics and online resharding internals are documented in [docs/INTERNALS.md](docs/INTERNALS.md).
 
 ## Querier
 
@@ -284,20 +193,12 @@ ROCKSDB_PATH=/mydata/rocksdb cargo run -p querier
 
 ### API examples
 
-CM estimate:
+Samples sum:
 
 ```bash
 curl -sS localhost:8082/query \
   -H 'content-type: application/json' \
-  -d '{"type":"cm_estimate","window":"1h","key":123}'
-```
-
-CM top-k:
-
-```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"cm_topk","window":"5m","limit":20}'
+  -d '{"type":"samples_sum","window":"1h"}'
 ```
 
 Histogram bucket:
@@ -308,179 +209,21 @@ curl -sS localhost:8082/query \
   -d '{"type":"histogram_bucket","window":"1d","bucket":42}'
 ```
 
-Histogram all:
+CM top-k:
 
 ```bash
 curl -sS localhost:8082/query \
   -H 'content-type: application/json' \
-  -d '{"type":"histogram_all","window":"1h"}'
-```
-
-Samples average:
-
-```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"samples_avg","window":"1h"}'
-```
-
-Samples sum:
-
-```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"samples_sum","window":"1h"}'
-```
-
-Samples average by key:
-
-```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"samples_avg_key","window":"1h","key":123}'
-```
-
-Samples sum by key:
-
-```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"samples_sum_key","window":"1h","key":123}'
-```
-
-Samples average by key prefix/suffix (bitmask match):
-
-```bash
-# Example: suffix match on low 16 bits (mask = 0xffff)
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"samples_avg_key","window":"1h","key":123,"mask":65535}'
+  -d '{"type":"cm_topk","window":"5m","limit":20}'
 ```
 
 Samples sum by key prefix/suffix (bitmask match):
 
 ```bash
+# Example: suffix match on low 16 bits (mask = 0xffff)
 curl -sS localhost:8082/query \
   -H 'content-type: application/json' \
   -d '{"type":"samples_sum_key","window":"1h","key":123,"mask":65535}'
 ```
 
-Samples raw max by key prefix/suffix (bitmask match, raw events as private witness):
-
-```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"samples_raw_max_key","window":"1h","key":123,"mask":65535}'
-```
-
-Samples raw stats by key prefix/suffix (bitmask match, raw events as private witness):
-
-Returns `count,sum,sumsq` (as `sumsq_lo/sumsq_hi` u64 limbs) so the client can compute variance/stddev.
-
-```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"samples_raw_stats_key","window":"1h","key":123,"mask":65535}'
-```
-
-Samples raw histogram bucket by key prefix/suffix (bitmask match, raw events as private witness):
-
-```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"samples_raw_histogram_bucket_key","window":"1h","key":123,"mask":65535,"bucket":10}'
-```
-
-Samples raw Count-Min estimate over values by key prefix/suffix (bitmask match, raw events as private witness):
-
-```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"samples_raw_cm_estimate_key","window":"1h","key":123,"mask":65535,"value":42}'
-```
-
-Per-key histogram bucket (from `histogram_epoch_per_key` sharded frames; note: currently returns an empty proof bundle):
-
-```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"series_histogram_bucket_key","window":"1h","key":123,"mask":65535,"bucket":10}'
-```
-
-Per-key CM estimate (from `cm_epoch_per_key` sharded frames; note: currently returns an empty proof bundle):
-
-```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"series_cm_estimate_key","window":"1h","key":123,"mask":65535,"value":42}'
-```
-
-## Benchmarks
-
-### `aggregator`
-
-Use scripts under `zk-Analytics/aggregator/scripts/` (they print `*_ms` fields and write CSVs).
-
-### Aggregator
-
-Bench one unit of work (requires data already in Postgres):
-
-```bash
-cd zk-Analytics
-MODE=3 ./scripts/bench_aggregator_once.sh
-MODE=1 MIN_SOURCES=2 ./scripts/bench_aggregator_once.sh
-MODE=2 MIN_SOURCES=2 ./scripts/bench_aggregator_once.sh
-```
-
-Key variables:
-- `MODE`: `1|2|3` (cm/hist/samples verify-only)
-- `PROOF_COMPRESS`: `0|1` (affects merge + agg-chain proof)
-- `MIN_SOURCES`: frames needed to aggregate a sequence (mode 1/2)
-- `VERIFY_ONLY_BATCH`: rows per verify-only run (mode 3)
-- `TIMEOUT_S`: stop if there’s no work
-
-Outputs:
-- `bench_csv/bench_aggregator_once.csv`
-- `bench_logs/`
-
-Run a small suite (one run per mode):
-
-```bash
-cd zk-Analytics
-./scripts/bench_aggregator_all.sh
-```
-
-### Querier
-
-
-## Non-ZK Native Baseline (SIGCOMM camera-ready)
-
-Isolates the cost of **zkVM proof generation** from the cost of the analytics
-architecture itself, by running the *same* aggregation/query logic
-(`process_*_aggr`, `run_*_query`) natively on the host CPU with **no zkVM and no
-proofs**, on the same machine / input / epoch+batch sizes / aggregator counts /
-matched CPU cores as the zkVM experiments.
-
-Components (all additive; the default proving path is unchanged):
-
-- `native_baseline/` — standalone native measurement binary (depends only
-  on the `*-core` crates, so it does **not** build any guest ELF).
-- `aggregator/host` `--native` (or `NATIVE=1`) — opt-in flag that runs the
-  aggregation analytics natively (no proof) through the real data loaders
-  (synthetic / Google `tsv` / CAIDA), used for the real-dataset e2e baseline.
-- `scripts/` + `Makefile`:
-  - `make eval-non-zk-baseline` — native aggregation + query micro-baselines and
-    the merged CSVs/plots/summary (seconds). Core deliverable.
-  - `make eval-zkvm-aggr-56` — re-prove aggregation at 56 threads (hours) to
-    match the paper's all-cores setup.
-  - `make eval-zkvm-query-proofs` — real zkVM query proofs at 1/2/4 epochs.
-  - `make eval-non-zk-e2e` — native e2e on the real Google/CAIDA traces.
-  - `scripts/run_non_zk_phase2.sh` — runs the CPU-heavy steps (query proofs,
-    CAIDA prep, e2e) in sequence on a quiet machine, then re-merges.
-
-Outputs (`results/`): `non_zk_aggregation_baseline.csv`,
-`non_zk_query_baseline.csv`, `zk_cost_breakdown.csv`, `non_zk_e2e_baseline.csv`,
-`non_zk_baseline_summary.md`; plots in `plots/`.
-
-Build dep: `clang`/`libclang-dev` (RocksDB bindings); FoundationDB 7.1 only for
-the FDB-backed querier e2e.
+> Benchmarking and the non-ZK native baseline are documented in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
