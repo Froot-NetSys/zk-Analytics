@@ -149,3 +149,9 @@ evaluation.
   instead, and reduce `SYNTH_KEYS` / epoch sizes.
 - Reset local state between runs: `./scripts/reset_rocksdb.sh`,
   `./scripts/reset_fdb.sh`.
+- `make eval-non-zk-baseline` on a fresh clone produces **native-only** CSVs
+  under `results/` (the repo ships no measured-ZK data); the ZK-comparison
+  columns/summary populate after you run `make eval-zkvm-aggr-56` (real proofs)
+  or `make eval-zkvm-dev-mode` (fast). This is expected, not an error.
+- PDF plots need matplotlib (`pip install matplotlib`); without it the run
+  still completes and just skips the plots with a warning.

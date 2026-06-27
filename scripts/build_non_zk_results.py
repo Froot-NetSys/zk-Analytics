@@ -79,17 +79,21 @@ def read_zkvm_aggr(mode):
                         "src": "zkvm_aggregation_56threads.csv (measured, 56 threads)",
                     }
     path = os.path.join(BENCH, f"bench_risc0_aggregator_{mode}.csv")
-    with open(path) as f:
-        for row in csv.DictReader(f):
-            if row.get("epoch_events") == str(EPOCH_LOGS):
-                return {
-                    "prove_ms": float(row["prove_ms_total"]),
-                    "verify_ms": float(row["verify_ms_total"]),
-                    "rss_kb": float(row["time_max_rss_kb"]),
-                    "threads": row["threads"],
-                    "src": os.path.basename(path) + " (measured, 32 threads)",
-                }
-    raise SystemExit(f"no epoch_events={EPOCH_LOGS} row in {path}")
+    if os.path.exists(path):
+        with open(path) as f:
+            for row in csv.DictReader(f):
+                if row.get("epoch_events") == str(EPOCH_LOGS):
+                    return {
+                        "prove_ms": float(row["prove_ms_total"]),
+                        "verify_ms": float(row["verify_ms_total"]),
+                        "rss_kb": float(row["time_max_rss_kb"]),
+                        "threads": row["threads"],
+                        "src": os.path.basename(path) + " (measured, 32 threads)",
+                    }
+    # No measured zkVM aggregation data present. This repo ships no raw results,
+    # so the native baseline still builds and the zkVM columns are left blank.
+    # Run `make eval-zkvm-aggr-56` (real proofs) to populate measured numbers.
+    return None
 
 
 # zkVM query proof-generation, MEASURED (paper §7.1 / Fig. 4). Each is the full
@@ -151,7 +155,7 @@ def build_aggregation_csv():
     rows = []
     # Matched cores = the thread count of the zkVM aggregation data we compare
     # against (56 when the 56-thread re-run is present, else 32).
-    matched = 56 if any(zk[m]["threads"] == "56" for m in zk) else 32
+    matched = 56 if any(z and z["threads"] == "56" for z in zk.values()) else 32
     header = [
         "aggregation_type", "num_aggregators", "epochs_per_max_aggregator",
         "logs_per_max_aggregator", "threads_matched",
@@ -163,8 +167,6 @@ def build_aggregation_csv():
     ]
     for mode in ("samples", "histogram", "cm"):
         z = zk[mode]
-        per_epoch_prove = z["prove_ms"]
-        per_epoch_verify = z["verify_ms"]
         for nagg in AGG_COUNTS:
             epochs = TOTAL_EPOCHS // nagg
             n32 = nat[(mode, epochs, 32)]
@@ -173,10 +175,22 @@ def build_aggregation_csv():
             nat_single_ms = float(nm["native_single_thread_ms"])
             nat_matched_ms = float(nm["native_max_core_ms"])       # matched-core run
             nat_32_ms = float(n32["native_max_core_ms"])           # 32-core (debug)
-            zk_prove_ms = per_epoch_prove * epochs
-            zk_verify_ms = per_epoch_verify * epochs
             nat_mem_mb = max(float(n32["peak_rss_kb"]),
                              float(n56["peak_rss_kb"])) / 1024.0
+            if z is None:
+                # native-only row: no measured zkVM data to compare against.
+                rows.append([
+                    MODE_LABEL[mode], nagg, epochs, epochs * EPOCH_LOGS, matched,
+                    f"{nat_single_ms/1e3:.6f}", f"{nat_matched_ms/1e3:.6f}",
+                    f"{nat_32_ms/1e3:.6f}",
+                    "", "", "", "",
+                    f"{nat_mem_mb:.2f}", "", "",
+                    matched, "",
+                    "native only; no measured zkVM data (run make eval-zkvm-aggr-56)",
+                ])
+                continue
+            zk_prove_ms = z["prove_ms"] * epochs
+            zk_verify_ms = z["verify_ms"] * epochs
             zk_mem_mb = z["rss_kb"] / 1024.0
             rows.append([
                 MODE_LABEL[mode], nagg, epochs, epochs * EPOCH_LOGS, matched,
@@ -309,16 +323,20 @@ def build_breakdown_csv(agg_rows, query_rows):
     # Aggregation = CMS, num_aggregators=1.
     agg = next(r for r in agg_rows
                if r[0] == MODE_LABEL["cm"] and r[1] == 1)
+    def _f(x):   # tolerate blank zkVM cells (no measured data shipped)
+        return float(x) if x not in ("", None) else None
+    def _s(x):
+        return f"{x:.3f}" if x is not None else ""
     nat_agg_s = float(agg[5])      # native_single_thread_s
-    zk_agg_prove_s = float(agg[8])
-    zk_agg_verify_s = float(agg[9])
+    zk_agg_prove_s = _f(agg[8])
+    zk_agg_verify_s = _f(agg[9])
 
     # Query = hash-table global sum, 16 epochs.
     qr = next(r for r in query_rows
               if r[0] == "Global sum" and r[2] == 16)
     nat_q_s = float(qr[4])
-    zk_q_prove_s = float(qr[6])
-    zk_q_verify_s = float(qr[7])
+    zk_q_prove_s = _f(qr[6])
+    zk_q_verify_s = _f(qr[7])
 
     # Dev-mode guest-execution times (RISC-V emulation / witness gen, no STARK).
     dev_agg = read_dev_aggregation()
@@ -335,9 +353,9 @@ def build_breakdown_csv(agg_rows, query_rows):
          "host CPU, no zkVM"],
         ["zkvm_execution_devmode", dev_agg_str, dev_q_str,
          "RISC Zero guest execution / witness gen (RISC0_DEV_MODE=1, no STARK), measured"],
-        ["zkvm_proof_generation", f"{zk_agg_prove_s:.3f}", f"{zk_q_prove_s:.3f}",
+        ["zkvm_proof_generation", _s(zk_agg_prove_s), _s(zk_q_prove_s),
          "RISC Zero succinct prove (witness gen + STARK), measured"],
-        ["proof_verification", f"{zk_agg_verify_s:.3f}", f"{zk_q_verify_s:.3f}",
+        ["proof_verification", _s(zk_agg_verify_s), _s(zk_q_verify_s),
          "RISC Zero receipt verify, measured"],
     ]
     with open(out, "w", newline="") as f:
@@ -595,7 +613,11 @@ def main():
         make_plots(agg_rows, query_rows, breakdown_rows)
     except Exception as e:  # plots are optional
         print("WARN: plotting failed:", e, file=sys.stderr)
-    build_summary(agg_rows, query_rows, breakdown_rows)
+    try:
+        build_summary(agg_rows, query_rows, breakdown_rows)
+    except Exception as e:  # derived convenience; needs measured zkVM data
+        print("WARN: summary skipped (no measured zkVM data — run "
+              "make eval-zkvm-aggr-56):", e, file=sys.stderr)
 
 
 if __name__ == "__main__":
