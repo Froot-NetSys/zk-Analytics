@@ -1,40 +1,20 @@
 # Benchmarks
 
-### `aggregator`
+The maintained, end-to-end benchmark and paper-reproduction guide is
+[`ARTIFACT-EVALUATION.md`](ARTIFACT-EVALUATION.md): it maps every figure and
+table (Figures 4–7, Tables 1–3) to a concrete command. The main entry points
+(each prints `*_ms` timing fields and writes CSVs under `results/`):
 
-Use scripts under `zk-Analytics/aggregator/scripts/` (they print `*_ms` fields and write CSVs).
-
-### Aggregator
-
-Bench one unit of work (requires data already in Postgres):
-
-```bash
-cd zk-Analytics
-MODE=3 ./scripts/bench_aggregator_once.sh
-MODE=1 MIN_SOURCES=2 ./scripts/bench_aggregator_once.sh
-MODE=2 MIN_SOURCES=2 ./scripts/bench_aggregator_once.sh
-```
-
-Key variables:
-- `MODE`: `1|2|3` (cm/hist/samples verify-only)
-- `PROOF_COMPRESS`: `0|1` (affects merge + agg-chain proof)
-- `MIN_SOURCES`: frames needed to aggregate a sequence (mode 1/2)
-- `VERIFY_ONLY_BATCH`: rows per verify-only run (mode 3)
-- `TIMEOUT_S`: stop if there’s no work
-
-Outputs:
-- `bench_csv/bench_aggregator_once.csv`
-- `bench_logs/`
-
-Run a small suite (one run per mode):
-
-```bash
-cd zk-Analytics
-./scripts/bench_aggregator_all.sh
-```
-
-### Querier
-
+- `make eval-non-zk-baseline`, `make eval-non-zk-e2e` — native (non-ZK)
+  aggregation/query baselines (see below).
+- `make eval-zkvm-dev-mode`, `make eval-zkvm-query-proofs`,
+  `make eval-zkvm-aggr-56` — zkVM proving benchmarks (execution-only, query
+  proofs, and the 56-thread aggregation re-anchor).
+- `FIG=6 ./scripts/run_figures_native.sh` / `run_figures_zk.sh` —
+  single-machine aggregation proving time / proof size / memory (Figure 6).
+- `./scripts/run_fig7_native.sh` — query benchmark (Figure 7).
+- `./scripts/run_distributed_baseline.sh`, `./scripts/run_table2_sweep.sh` —
+  distributed end-to-end across 1/2/4/8 aggregators (Figure 5, Tables 2–3).
 
 ## Non-ZK Native Baseline (SIGCOMM camera-ready)
 
