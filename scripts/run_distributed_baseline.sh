@@ -14,7 +14,7 @@ set -uo pipefail
 #   MODE      native | zk
 #   NODES     space list of node hostnames (NODES[0]=node0=coordinator),
 #             e.g. "node0 node1 node2 node3 node4 node5 node6 node7"
-# Optional: EPOCH_LOGS(16384) COMMIT_BATCH_SIZE(8) KAFKA_HOST(10.10.1.1)
+# Optional: EPOCH_LOGS(16384) COMMIT_BATCH_SIZE(8) KAFKA_HOST(192.0.2.1)
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
@@ -27,7 +27,7 @@ COORD="${NODES[0]}"
 
 EPOCH_LOGS="${EPOCH_LOGS:-16384}"
 COMMIT_BATCH_SIZE="${COMMIT_BATCH_SIZE:-8}"
-KAFKA_HOST="${KAFKA_HOST:-10.10.1.1}"
+KAFKA_HOST="${KAFKA_HOST:-192.0.2.1}"
 KAFKA_BROKERS="${KAFKA_HOST}:9092"
 FDB_CLUSTER_FILE="${FDB_CLUSTER_FILE:-$HOME/zktel-dist/fdb.cluster}"
 QUERIER_PORT="${QUERIER_PORT:-8090}"

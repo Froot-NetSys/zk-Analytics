@@ -6,7 +6,7 @@
 #
 # Usage (distributed - allow remote clients):
 #   cd scripts
-#   KAFKA_EXTERNAL_IP=10.10.1.1 docker-compose -f docker-compose-kafka.yml up -d
+#   KAFKA_EXTERNAL_IP=192.0.2.1 docker-compose -f docker-compose-kafka.yml up -d
 #
 # Kafka will be available at:
 #   - localhost:9092 (local clients)

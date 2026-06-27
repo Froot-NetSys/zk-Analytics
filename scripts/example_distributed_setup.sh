@@ -4,7 +4,7 @@
 # Copy this file and customize for your environment
 
 # List of remote machines (space-separated IPs or hostnames)
-export REMOTE_MACHINES="10.10.1.9 10.10.1.10 10.10.1.11 10.10.1.12"
+export REMOTE_MACHINES="192.0.2.9 192.0.2.10 192.0.2.11 192.0.2.12"
 
 # SSH username for remote machines
 export SSH_USER="${SSH_USER:-$USER}"

@@ -105,7 +105,7 @@ ZK_AGGREGATION_TIMEOUT="${ZK_AGGREGATION_TIMEOUT:-0}"
 # Distributed machines configuration
 # AGGREGATOR_MACHINES is sourced from ip_defaults.sh (single source of truth)
 # Override by setting AGGREGATOR_MACHINES before running this script, e.g.:
-#   AGGREGATOR_MACHINES="10.10.1.1 10.10.1.2" ./scripts/bench_distributed_aggregators.sh
+#   AGGREGATOR_MACHINES="192.0.2.1 192.0.2.2" ./scripts/bench_distributed_aggregators.sh
 # Or edit scripts/ip_defaults.sh directly for persistent changes.
 
 # SSH user for remote machines (if different from current user)

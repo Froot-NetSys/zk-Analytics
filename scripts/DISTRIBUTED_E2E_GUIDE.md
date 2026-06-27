@@ -30,9 +30,9 @@ source scripts/my_setup.sh
 
 ```bash
 # Basic test with default configuration
-REMOTE_MACHINES="10.10.1.1 10.10.1.2 10.10.1.3" \
+REMOTE_MACHINES="192.0.2.1 192.0.2.2 192.0.2.3" \
 SSH_USER="ubuntu" \
-KAFKA_BROKERS="10.10.1.100:9092" \
+KAFKA_BROKERS="192.0.2.100:9092" \
 ./scripts/run_distributed_e2e.sh start
 ```
 
@@ -82,7 +82,7 @@ KAFKA_BROKERS="10.10.1.100:9092" \
 
 #### Small Test (Quick Validation)
 ```bash
-REMOTE_MACHINES="10.10.1.1 10.10.1.2" \
+REMOTE_MACHINES="192.0.2.1 192.0.2.2" \
 SSH_USER="ubuntu" \
 NUM_AGGREGATORS=1 \
 EVENTS=100000 \
@@ -91,7 +91,7 @@ EVENTS=100000 \
 
 #### Medium Test (Typical Workload)
 ```bash
-REMOTE_MACHINES="10.10.1.1 10.10.1.2 10.10.1.3 10.10.1.4" \
+REMOTE_MACHINES="192.0.2.1 192.0.2.2 192.0.2.3 192.0.2.4" \
 SSH_USER="ubuntu" \
 NUM_AGGREGATORS=2 \
 EVENTS=5000000 \
@@ -101,7 +101,7 @@ EPOCH_TYPE=histogram \
 
 #### Large Test (Stress Test)
 ```bash
-REMOTE_MACHINES="10.10.1.1 10.10.1.2 10.10.1.3 10.10.1.4 10.10.1.5 10.10.1.6 10.10.1.7 10.10.1.8" \
+REMOTE_MACHINES="192.0.2.1 192.0.2.2 192.0.2.3 192.0.2.4 192.0.2.5 192.0.2.6 192.0.2.7 192.0.2.8" \
 SSH_USER="ubuntu" \
 NUM_AGGREGATORS=4 \
 EVENTS=50000000 \
@@ -192,7 +192,7 @@ docker exec kafka kafka-consumer-groups \
     --describe --group dist_e2e_aggregators
 
 # Watch logs on a specific machine
-ssh ubuntu@10.10.1.1 "tail -f /tmp/zktelemetry_agg_*/aggregator.log"
+ssh ubuntu@192.0.2.1 "tail -f /tmp/zktelemetry_agg_*/aggregator.log"
 ```
 
 ### After Completion
@@ -219,14 +219,14 @@ done
 
 **Check if binaries are built:**
 ```bash
-ssh ubuntu@10.10.1.1 "test -f ~/zk-Analytics/target/release/aggregator && echo 'Built' || echo 'Not built'"
+ssh ubuntu@192.0.2.1 "test -f ~/zk-Analytics/target/release/aggregator && echo 'Built' || echo 'Not built'"
 ```
 
 ### Kafka Connection Issues
 
 **Verify Kafka is accessible from remote machines:**
 ```bash
-ssh ubuntu@10.10.1.1 "nc -zv $KAFKA_BROKERS"
+ssh ubuntu@192.0.2.1 "nc -zv $KAFKA_BROKERS"
 ```
 
 **Check topic exists:**
@@ -238,19 +238,19 @@ docker exec kafka kafka-topics --bootstrap-server localhost:9092 --list
 
 **Test FDB from remote machine:**
 ```bash
-ssh ubuntu@10.10.1.1 "fdbcli --exec 'status minimal'"
+ssh ubuntu@192.0.2.1 "fdbcli --exec 'status minimal'"
 ```
 
 **Verify cluster file is copied:**
 ```bash
-ssh ubuntu@10.10.1.1 "cat /etc/foundationdb/fdb.cluster"
+ssh ubuntu@192.0.2.1 "cat /etc/foundationdb/fdb.cluster"
 ```
 
 ### Processing Stalls
 
 **Check aggregator logs for errors:**
 ```bash
-ssh ubuntu@10.10.1.1 "tail -100 /tmp/zktelemetry_agg_0/aggregator.log"
+ssh ubuntu@192.0.2.1 "tail -100 /tmp/zktelemetry_agg_0/aggregator.log"
 ```
 
 **Check consumer group lag:**
@@ -354,9 +354,9 @@ done
 
 ```bash
 # 1. Configure environment
-export REMOTE_MACHINES="10.10.1.1 10.10.1.2 10.10.1.3"
+export REMOTE_MACHINES="192.0.2.1 192.0.2.2 192.0.2.3"
 export SSH_USER="ubuntu"
-export KAFKA_BROKERS="10.10.1.100:9092"
+export KAFKA_BROKERS="192.0.2.100:9092"
 
 # 2. Ensure machines are set up
 ./scripts/setup_remote_e2e.sh

@@ -26,9 +26,9 @@ set -euo pipefail
 #   KAFKA_BROKERS      Kafka broker addresses (default: localhost:9092)
 #
 # Example:
-#   REMOTE_MACHINES="10.10.1.1 10.10.1.2 10.10.1.3" \
+#   REMOTE_MACHINES="192.0.2.1 192.0.2.2 192.0.2.3" \
 #   SSH_USER="ubuntu" \
-#   KAFKA_BROKERS="10.10.1.100:9092" \
+#   KAFKA_BROKERS="192.0.2.100:9092" \
 #   ./scripts/setup_remote_e2e.sh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -75,7 +75,7 @@ validate_config() {
         log_error "REMOTE_MACHINES environment variable is required"
         echo ""
         echo "Usage example:"
-        echo "  REMOTE_MACHINES=\"10.10.1.1 10.10.1.2 10.10.1.3\" \\"
+        echo "  REMOTE_MACHINES=\"192.0.2.1 192.0.2.2 192.0.2.3\" \\"
         echo "  SSH_USER=\"ubuntu\" \\"
         echo "  ./scripts/setup_remote_e2e.sh"
         exit 1

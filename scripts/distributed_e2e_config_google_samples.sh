@@ -7,14 +7,14 @@
 # ============================================
 
 # Data source machine (replays real-world dataset)
-export DATA_SOURCE_MACHINE="10.10.1.1"
+export DATA_SOURCE_MACHINE="192.0.2.1"
 
 # Aggregator machines (space-separated list)
 # Each machine will run NUM_AGGREGATORS aggregator processes
-export AGGREGATOR_MACHINES="10.10.1.2 10.10.1.3 10.10.1.4 10.10.1.5"
+export AGGREGATOR_MACHINES="192.0.2.2 192.0.2.3 192.0.2.4 192.0.2.5"
 
 # Querier machine (handles queries and validation)
-export QUERIER_MACHINE="10.10.1.6"
+export QUERIER_MACHINE="192.0.2.6"
 
 # SSH configuration
 export SSH_USER="${SSH_USER:-$USER}"
@@ -25,7 +25,7 @@ export REMOTE_PROJECT_DIR="/mydata/zk-Analytics"
 # ============================================
 
 # Kafka broker addresses (auto-detected from DATA_SOURCE_MACHINE if not set)
-export KAFKA_BROKERS="10.10.1.1:9092"
+export KAFKA_BROKERS="192.0.2.1:9092"
 export KAFKA_TOPIC="raw_events"
 
 # ============================================
@@ -37,19 +37,19 @@ export KAFKA_TOPIC="raw_events"
 # FDB Docker container - this won't work for distributed testing!
 #
 # FDB Architecture:
-#   - FDB server runs on QUERIER_MACHINE (10.10.1.6)
+#   - FDB server runs on QUERIER_MACHINE (192.0.2.6)
 #   - Aggregators connect remotely to FDB on querier
 #   - All machines need the same cluster file pointing to the querier's FDB
 #
 # Setup FDB for distributed mode (REQUIRED):
 #
 # Option 1: Native FDB installation on querier machine
-#   1. On 10.10.1.6: apt-get install foundationdb-server foundationdb-clients
+#   1. On 192.0.2.6: apt-get install foundationdb-server foundationdb-clients
 #   2. Update cluster file to use external IP:
-#      echo 'zktelemetry:zktelemetry@10.10.1.6:4500' | sudo tee /etc/foundationdb/fdb.cluster
+#      echo 'zktelemetry:zktelemetry@192.0.2.6:4500' | sudo tee /etc/foundationdb/fdb.cluster
 #   3. Configure FDB: fdbcli --exec 'configure new single ssd'
 #   4. Copy cluster file to all other machines:
-#      for ip in 10.10.1.2 10.10.1.3 10.10.1.4 10.10.1.5; do
+#      for ip in 192.0.2.2 192.0.2.3 192.0.2.4 192.0.2.5; do
 #        scp /etc/foundationdb/fdb.cluster $ip:/etc/foundationdb/
 #      done
 #
@@ -57,7 +57,7 @@ export KAFKA_TOPIC="raw_events"
 #   1. Stop existing FDB container
 #   2. Run with --network host:
 #      docker run -d --name fdb --network host foundationdb/foundationdb:7.1.25
-#   3. Create cluster file: echo 'zktelemetry:zktelemetry@10.10.1.6:4500' | sudo tee /etc/foundationdb/fdb.cluster
+#   3. Create cluster file: echo 'zktelemetry:zktelemetry@192.0.2.6:4500' | sudo tee /etc/foundationdb/fdb.cluster
 #   4. Initialize: fdbcli --exec 'configure new single ssd'
 #   5. Copy cluster file to all other machines
 #

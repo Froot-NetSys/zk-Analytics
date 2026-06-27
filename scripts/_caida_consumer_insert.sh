@@ -8,7 +8,7 @@ set -uo pipefail
 cd /mydata/zk-Analytics
 LBIN="target/release"; DIST="$HOME/zktel-dist"; RBIN="$DIST/bin"
 REMOTE_ENV="LD_LIBRARY_PATH=$DIST/lib PATH=$HOME/.cargo/bin:\$PATH"
-KB="10.10.1.1:9092"; N=8; TOPIC="raw_caida_insert"; RUNID="caidains$(date +%s)"
+KB="192.0.2.1:9092"; N=8; TOPIC="raw_caida_insert"; RUNID="caidains$(date +%s)"
 on_node(){ local node="$1"; shift; if [ "$node" = node0 ]; then bash -c "$*"; else ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$node" "$*"; fi; }
 spawn_node(){ local node="$1"; shift; local cmd="$*"
   if [ "$node" = node0 ]; then setsid bash -c "$cmd" </dev/null >/dev/null 2>&1 &

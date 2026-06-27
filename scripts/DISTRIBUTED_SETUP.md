@@ -56,12 +56,12 @@ First, set up SSH keys for passwordless access to remote machines:
 ssh-keygen -t ed25519 -C "your_email@example.com"
 
 # Copy SSH key to each remote machine
-ssh-copy-id ubuntu@10.10.1.1
-ssh-copy-id ubuntu@10.10.1.2
+ssh-copy-id ubuntu@192.0.2.1
+ssh-copy-id ubuntu@192.0.2.2
 # ... repeat for all machines
 
 # Test SSH access
-ssh ubuntu@10.10.1.1 "echo 'SSH OK'"
+ssh ubuntu@192.0.2.1 "echo 'SSH OK'"
 ```
 
 ## Step 2: Configure Your Environment
@@ -76,7 +76,7 @@ Edit `scripts/my_distributed_setup.sh`:
 
 ```bash
 # List your actual machine IPs
-export REMOTE_MACHINES="10.10.1.1 10.10.1.2 10.10.1.3"
+export REMOTE_MACHINES="192.0.2.1 192.0.2.2 192.0.2.3"
 
 # Your SSH username
 export SSH_USER="ubuntu"
@@ -85,7 +85,7 @@ export SSH_USER="ubuntu"
 export REMOTE_PROJECT_DIR="/home/ubuntu/zk-Analytics"
 
 # Your Kafka broker address (must be accessible from all machines)
-export KAFKA_BROKERS="10.10.1.100:9092"
+export KAFKA_BROKERS="192.0.2.100:9092"
 
 # Path to your FDB cluster file
 export FDB_CLUSTER_FILE="/etc/foundationdb/fdb.cluster"
@@ -205,10 +205,10 @@ done
 
 ```bash
 # Watch logs on a specific machine
-ssh ubuntu@10.10.1.1 "tail -f /tmp/zktelemetry_bench/*/aggregator*.log"
+ssh ubuntu@192.0.2.1 "tail -f /tmp/zktelemetry_bench/*/aggregator*.log"
 
 # Check resource usage
-ssh ubuntu@10.10.1.1 "htop"
+ssh ubuntu@192.0.2.1 "htop"
 
 # Monitor all aggregator processes
 for machine in $REMOTE_MACHINES; do
@@ -239,33 +239,33 @@ wait
 
 ```bash
 # Test connectivity
-ssh -v ubuntu@10.10.1.1
+ssh -v ubuntu@192.0.2.1
 
 # Check SSH keys
 ssh-add -l
 
 # Re-copy SSH key
-ssh-copy-id -i ~/.ssh/id_ed25519.pub ubuntu@10.10.1.1
+ssh-copy-id -i ~/.ssh/id_ed25519.pub ubuntu@192.0.2.1
 ```
 
 ### FDB Connection Issues
 
 ```bash
 # Test FDB from remote machine
-ssh ubuntu@10.10.1.1 "fdbcli --exec 'status'"
+ssh ubuntu@192.0.2.1 "fdbcli --exec 'status'"
 
 # Check cluster file
-ssh ubuntu@10.10.1.1 "cat /etc/foundationdb/fdb.cluster"
+ssh ubuntu@192.0.2.1 "cat /etc/foundationdb/fdb.cluster"
 
 # Verify network connectivity to FDB
-ssh ubuntu@10.10.1.1 "nc -zv <fdb_host> 4500"
+ssh ubuntu@192.0.2.1 "nc -zv <fdb_host> 4500"
 ```
 
 ### Kafka Connection Issues
 
 ```bash
 # Test Kafka connectivity
-ssh ubuntu@10.10.1.1 "nc -zv <kafka_host> 9092"
+ssh ubuntu@192.0.2.1 "nc -zv <kafka_host> 9092"
 
 # Check Kafka topics
 docker exec kafka kafka-topics --bootstrap-server localhost:9092 --list
@@ -279,11 +279,11 @@ docker exec kafka kafka-consumer-groups --bootstrap-server localhost:9092 \
 
 ```bash
 # Clean and rebuild on a machine
-ssh ubuntu@10.10.1.1 "cd ~/zk-Analytics && cargo clean && \
+ssh ubuntu@192.0.2.1 "cd ~/zk-Analytics && cargo clean && \
     cargo build --release -p aggregator --features 'kafka fdb'"
 
 # Check disk space
-ssh ubuntu@10.10.1.1 "df -h"
+ssh ubuntu@192.0.2.1 "df -h"
 ```
 
 ## Performance Tips
@@ -299,10 +299,10 @@ ssh ubuntu@10.10.1.1 "df -h"
 ```bash
 # 1. Configure environment
 cat > scripts/my_setup.sh <<'EOF'
-export REMOTE_MACHINES="10.10.1.1 10.10.1.2 10.10.1.3"
+export REMOTE_MACHINES="192.0.2.1 192.0.2.2 192.0.2.3"
 export SSH_USER="ubuntu"
 export REMOTE_PROJECT_DIR="/home/ubuntu/zk-Analytics"
-export KAFKA_BROKERS="10.10.1.100:9092"
+export KAFKA_BROKERS="192.0.2.100:9092"
 export FDB_CLUSTER_FILE="/etc/foundationdb/fdb.cluster"
 EOF
 

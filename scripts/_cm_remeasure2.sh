@@ -4,7 +4,7 @@ set -uo pipefail
 # measured reps each, report all values (median computed downstream). Confirms
 # CM native aggregation compute is ~key-independent (fixed-size sketch).
 cd /mydata/zk-Analytics
-B=target/release; PROD=target/release/kafka-producer; FC=$HOME/zktel-dist/fdb.cluster; KB=10.10.1.1:9092
+B=target/release; PROD=target/release/kafka-producer; FC=$HOME/zktel-dist/fdb.cluster; KB=192.0.2.1:9092
 export SAMPLES_HT_BUCKETS=64 SAMPLES_HT_BUCKET_CAP=4 HISTOGRAM_SLOTS=32 CM_TOPK_SLOTS=100
 run_one(){ # keys tag -> echoes aggr_compute_ms
   local keys=$1 TAG=$2

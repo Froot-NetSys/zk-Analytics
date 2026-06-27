@@ -49,11 +49,11 @@ set -euo pipefail
 #   PARALLEL_PRODUCERS   Number of parallel producer tasks for dataset mode (default: NUM_AGGREGATORS)
 #
 # Example:
-#   DATA_SOURCE_MACHINE="10.10.1.10" \
-#   AGGREGATOR_MACHINES="10.10.1.1 10.10.1.2 10.10.1.3" \
-#   QUERIER_MACHINE="10.10.1.20" \
+#   DATA_SOURCE_MACHINE="192.0.2.10" \
+#   AGGREGATOR_MACHINES="192.0.2.1 192.0.2.2 192.0.2.3" \
+#   QUERIER_MACHINE="192.0.2.20" \
 #   SSH_USER="ubuntu" \
-#   KAFKA_BROKERS="10.10.1.100:9092" \
+#   KAFKA_BROKERS="192.0.2.100:9092" \
 #   EVENTS=5000000 \
 #   ./scripts/run_distributed_e2e.sh start
 
@@ -525,9 +525,9 @@ validate_config() {
     if [[ $errors -eq 1 ]]; then
         echo ""
         echo "Example:"
-        echo "  DATA_SOURCE_MACHINE=\"10.10.1.10\" \\"
-        echo "  AGGREGATOR_MACHINES=\"10.10.1.1 10.10.1.2 10.10.1.3\" \\"
-        echo "  QUERIER_MACHINE=\"10.10.1.20\" \\"
+        echo "  DATA_SOURCE_MACHINE=\"192.0.2.10\" \\"
+        echo "  AGGREGATOR_MACHINES=\"192.0.2.1 192.0.2.2 192.0.2.3\" \\"
+        echo "  QUERIER_MACHINE=\"192.0.2.20\" \\"
         echo "  SSH_USER=\"ubuntu\" \\"
         echo "  ./scripts/run_distributed_e2e.sh start"
         exit 1

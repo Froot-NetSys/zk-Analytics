@@ -3,7 +3,7 @@ set -uo pipefail
 # Re-measure CM native aggregation compute time across unique-key counts, 3 reps
 # each, to characterize variance and confirm CM compute is ~key-independent.
 cd /mydata/zk-Analytics
-B=target/release; PROD=target/release/kafka-producer; FC=$HOME/zktel-dist/fdb.cluster; KB=10.10.1.1:9092
+B=target/release; PROD=target/release/kafka-producer; FC=$HOME/zktel-dist/fdb.cluster; KB=192.0.2.1:9092
 export SAMPLES_HT_BUCKETS=64 SAMPLES_HT_BUCKET_CAP=4 HISTOGRAM_SLOTS=32 CM_TOPK_SLOTS=100
 for keys in 256 1024 2048 4096; do
   for rep in 1 2 3; do
