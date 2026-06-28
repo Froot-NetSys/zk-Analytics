@@ -81,7 +81,7 @@ These queries aggregate only over keys matching a specific prefix (requires `KEY
 ```bash
 # Test common aggregations
 export QUERY_TYPES="samples_sum,samples_avg,samples_p99,samples_count"
-./scripts/run_distributed_e2e.sh evaluate
+./scripts/distributed/run_distributed_e2e.sh evaluate
 ```
 
 ### Prefix-Based Filtering
@@ -90,7 +90,7 @@ export QUERY_TYPES="samples_sum,samples_avg,samples_p99,samples_count"
 # Sum and average for CPU metrics only
 export KEY_PREFIX="metric.cpu."
 export QUERY_TYPES="samples_sum_prefix,samples_avg_prefix"
-./scripts/run_distributed_e2e.sh evaluate
+./scripts/distributed/run_distributed_e2e.sh evaluate
 ```
 
 ### Comparing Global vs Filtered Results
@@ -99,7 +99,7 @@ export QUERY_TYPES="samples_sum_prefix,samples_avg_prefix"
 # Compare total sum vs sum for specific prefix
 export KEY_PREFIX="sensor.temperature."
 export QUERY_TYPES="samples_sum,samples_sum_prefix"
-./scripts/run_distributed_e2e.sh evaluate
+./scripts/distributed/run_distributed_e2e.sh evaluate
 ```
 
 ### Testing Multiple Prefixes
@@ -109,7 +109,7 @@ export QUERY_TYPES="samples_sum,samples_sum_prefix"
 for prefix in "metric.cpu." "metric.memory." "metric.disk."; do
   export KEY_PREFIX="$prefix"
   export QUERY_TYPES="samples_sum_prefix,samples_p99_prefix"
-  ./scripts/run_distributed_e2e.sh evaluate
+  ./scripts/distributed/run_distributed_e2e.sh evaluate
 done
 ```
 
@@ -119,7 +119,7 @@ done
 # Run 100 iterations of each query for accurate performance data
 export NUM_QUERY_ITERATIONS=100
 export QUERY_TYPES="samples_sum,samples_p99"
-./scripts/run_distributed_e2e.sh evaluate
+./scripts/distributed/run_distributed_e2e.sh evaluate
 ```
 
 ### Testing Different Time Windows
@@ -129,7 +129,7 @@ export QUERY_TYPES="samples_sum,samples_p99"
 for window in "5m" "1h" "6h" "24h"; do
   export QUERY_WINDOW="$window"
   export QUERY_TYPES="samples_sum,samples_avg"
-  ./scripts/run_distributed_e2e.sh evaluate
+  ./scripts/distributed/run_distributed_e2e.sh evaluate
 done
 ```
 
@@ -159,7 +159,7 @@ Query evaluation produces:
 ```bash
 export QUERY_TYPES="samples_sum,samples_avg,samples_count,samples_p90,samples_p99"
 export QUERY_WINDOW="1h"
-./scripts/run_distributed_e2e.sh evaluate
+./scripts/distributed/run_distributed_e2e.sh evaluate
 ```
 
 **Use for**: Validating basic aggregation correctness and performance
@@ -169,7 +169,7 @@ export QUERY_WINDOW="1h"
 ```bash
 export KEY_PREFIX="prod.api."
 export QUERY_TYPES="samples_sum_prefix,samples_avg_prefix,samples_p99_prefix"
-./scripts/run_distributed_e2e.sh evaluate
+./scripts/distributed/run_distributed_e2e.sh evaluate
 ```
 
 **Use for**: Verifying prefix-based filtering for multi-tenant or namespaced metrics
@@ -179,7 +179,7 @@ export QUERY_TYPES="samples_sum_prefix,samples_avg_prefix,samples_p99_prefix"
 ```bash
 export QUERY_TYPES="samples_p50,samples_p90,samples_p95,samples_p99"
 export NUM_QUERY_ITERATIONS=50
-./scripts/run_distributed_e2e.sh evaluate
+./scripts/distributed/run_distributed_e2e.sh evaluate
 ```
 
 **Use for**: Measuring query latency and performance characteristics
@@ -190,7 +190,7 @@ export NUM_QUERY_ITERATIONS=50
 # Compare global vs prefix - prefix sum should be <= global sum
 export KEY_PREFIX="test.metrics."
 export QUERY_TYPES="samples_sum,samples_sum_prefix,samples_count,samples_count_prefix"
-./scripts/run_distributed_e2e.sh evaluate
+./scripts/distributed/run_distributed_e2e.sh evaluate
 ```
 
 **Use for**: Verifying that filtered queries return subsets of global results
@@ -217,7 +217,7 @@ The `KEY_PREFIX` should match your metric naming convention:
 ### Query Returns Error
 
 Check if:
-- Querier is running: `./scripts/run_distributed_e2e.sh status`
+- Querier is running: `./scripts/distributed/run_distributed_e2e.sh status`
 - Data has been ingested into FDB
 - Query type is valid for your `EPOCH_TYPE`
 - `KEY_PREFIX` is set when using `*_prefix` query types

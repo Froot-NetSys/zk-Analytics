@@ -22,13 +22,13 @@ New tooling added for this evaluation:
 - `handoff-sync` (`src/bin/handoff_sync.rs`) — replicates published `Handoff`
   rows between per-aggregator stores (single-machine stand-in for the shared
   coordination store); used by the continuity fix in §2b.
-- `scripts/bench_resharding_perf.sh` — corrected end-to-end scale-up/down
+- `scripts/bench/bench_resharding_perf.sh` — corrected end-to-end scale-up/down
   harness (replaces the now-removed existence-proof `bench_resharding.sh`).
-- `scripts/bench_resharding_handoff.sh` — focused continuity demo asserting
+- `scripts/bench/bench_resharding_handoff.sh` — focused continuity demo asserting
   `chain-inspector --strict` PASS after the §2b fix.
-- `scripts/bench_resharding_xy.sh` — general X→Y reshard sweep (§2c): coverage
+- `scripts/bench/bench_resharding_xy.sh` — general X→Y reshard sweep (§2c): coverage
   + continuity for arbitrary aggregator counts, scale up and down.
-- `scripts/bench_resharding_real.sh` — general X→Y on the REAL raw_db path
+- `scripts/bench/bench_resharding_real.sh` — general X→Y on the REAL raw_db path
   (§2d): aggregators read real `epoch_batches`; the core cryptographically
   verifies each moved source's chain (a wrong inherited tip panics).
 - `--gen-raw-epochs` / `--max-process-seq` / `--keep-raw-batches` — aggregator
@@ -147,7 +147,7 @@ Store-level proof — `tests/handoff_inheritance.rs` (3 tests, all pass):
 `handoff_at` round-trips the published tip; a missing row is a cold start; a
 zero-tip/sentinel row is rejected by the inheritance predicate.
 
-End-to-end — `scripts/bench_resharding_handoff.sh`:
+End-to-end — `scripts/bench/bench_resharding_handoff.sh`:
 
 ```
 [native-aggr][ownership] seq=3 source_id=1 outgoing (to next_owner=1)        # agg0 publishes real tip
@@ -184,7 +184,7 @@ A new coverage check — `chain-inspector --check-coverage --sources N
 --aggregators Y --at-epoch B` — asserts the post-reshard map partitions all N
 sources across exactly Y aggregators (each owned once, none dropped).
 
-`scripts/bench_resharding_xy.sh` runs the full protocol (install both maps →
+`scripts/bench/bench_resharding_xy.sh` runs the full protocol (install both maps →
 old owners build+persist tips → replicate → new owners inherit → verify) over a
 sweep. Result (N=12 sources, boundary epoch 3) — **every config PASS**:
 
@@ -228,7 +228,7 @@ three small pieces were added:
   without this the kept raw_db re-surfaces the epoch every poll pass, replaying
   the ownership filter with stale state).
 
-`scripts/bench_resharding_real.sh`: gen shared raw → old owners process
+`scripts/bench/bench_resharding_real.sh`: gen shared raw → old owners process
 `[0,B-1]` and persist tips → replicate tips → new owners process `[B,B+1]`,
 each reading the **real** boundary batch and verifying it chains from the
 inherited tip. Because the core panics on a chain/sequence mismatch, a clean run
@@ -253,7 +253,7 @@ sources' chains are verified to continue across the reshard.
 ### 2e. Real zkVM proof across a handoff
 
 §2a–2d run `--no-zkvm-proof` (they verify the SHA-256 chain in the core, which
-is what the proof attests). As a final check, `scripts/prove_handoff_demo.sh`
+is what the proof attests). As a final check, `scripts/bench/prove_handoff_demo.sh`
 generates and **verifies actual RISC0 receipts** across a 1→2 handoff (one tiny
 epoch each side; real proving is slow here — no AVX-512 — ~4 min/epoch):
 
@@ -345,11 +345,11 @@ cargo build --release -p zktelemetry-risc0-aggr-host \
   --bin zktelemetry-risc0-aggr-host --bin reshard-controller \
   --bin chain-inspector --bin reshard-bench --bin handoff-sync
 cargo test --release -p zktelemetry-risc0-aggr-host --test handoff_inheritance
-./scripts/bench_resharding_handoff.sh        # continuity fix demo -> VERDICT: PASS (exit 0)
-./scripts/bench_resharding_xy.sh             # general X->Y sweep (up & down) -> ALL CONFIGS PASS
-./scripts/bench_resharding_real.sh           # general X->Y on REAL raw_db path (chain verified) -> ALL PASS
-./scripts/prove_handoff_demo.sh              # real zkVM receipt VERIFIED across a handoff (~10 min)
-./scripts/bench_resharding_perf.sh           # e2e + microbench
+./scripts/bench/bench_resharding_handoff.sh        # continuity fix demo -> VERDICT: PASS (exit 0)
+./scripts/bench/bench_resharding_xy.sh             # general X->Y sweep (up & down) -> ALL CONFIGS PASS
+./scripts/bench/bench_resharding_real.sh           # general X->Y on REAL raw_db path (chain verified) -> ALL PASS
+./scripts/bench/prove_handoff_demo.sh              # real zkVM receipt VERIFIED across a handoff (~10 min)
+./scripts/bench/bench_resharding_perf.sh           # e2e + microbench
 target/release/chain-inspector --rocksdb-path DB1 --rocksdb-path DB2 [--strict]
 target/release/chain-inspector --check-coverage --rocksdb-path DB --sources N --aggregators Y --at-epoch B
 ```

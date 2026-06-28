@@ -74,7 +74,7 @@ reshard (scale up or down); see `EVALUATION_ONLINE_RESHARDING.md` for the
 end-to-end verification (including a real zkVM proof that verifies across a
 handoff).
 
-Evaluation harnesses: `scripts/bench_resharding_xy.sh` (general X→Y reshard,
-scale up & down), `scripts/bench_resharding_real.sh` (real raw_db path, chain
-verified), `scripts/prove_handoff_demo.sh` (real zkVM proof across a handoff).
+Evaluation harnesses: `scripts/bench/bench_resharding_xy.sh` (general X→Y reshard,
+scale up & down), `scripts/bench/bench_resharding_real.sh` (real raw_db path, chain
+verified), `scripts/bench/prove_handoff_demo.sh` (real zkVM proof across a handoff).
 See `EVALUATION_ONLINE_RESHARDING.md`.

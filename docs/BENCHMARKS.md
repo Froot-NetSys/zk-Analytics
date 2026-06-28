@@ -10,10 +10,10 @@ table (Figures 4–7, Tables 1–3) to a concrete command. The main entry points
 - `make eval-zkvm-dev-mode`, `make eval-zkvm-query-proofs`,
   `make eval-zkvm-aggr-56` — zkVM proving benchmarks (execution-only, query
   proofs, and the 56-thread aggregation re-anchor).
-- `FIG=6 ./scripts/run_figures_native.sh` / `run_figures_zk.sh` —
+- `FIG=6 ./scripts/eval/run_figures_native.sh` / `run_figures_zk.sh` —
   single-machine aggregation proving time / proof size / memory (Figure 6).
-- `./scripts/run_fig7_native.sh` — query benchmark (Figure 7).
-- `./scripts/run_distributed_baseline.sh`, `./scripts/run_table2_sweep.sh` —
+- `./scripts/eval/run_fig7_native.sh` — query benchmark (Figure 7).
+- `./scripts/distributed/run_distributed_baseline.sh`, `./scripts/eval/run_table2_sweep.sh` —
   distributed end-to-end across 1/2/4/8 aggregators (Figure 5, Tables 2–3).
 
 ## Non-ZK Native Baseline (SIGCOMM camera-ready)
@@ -38,7 +38,7 @@ Components (all additive; the default proving path is unchanged):
     match the paper's all-cores setup.
   - `make eval-zkvm-query-proofs` — real zkVM query proofs at 1/2/4 epochs.
   - `make eval-non-zk-e2e` — native e2e on the real Google/CAIDA traces.
-  - `scripts/run_non_zk_phase2.sh` — runs the CPU-heavy steps (query proofs,
+  - `scripts/eval/run_non_zk_phase2.sh` — runs the CPU-heavy steps (query proofs,
     CAIDA prep, e2e) in sequence on a quiet machine, then re-merges.
 
 Outputs (`results/`): `non_zk_aggregation_baseline.csv`,

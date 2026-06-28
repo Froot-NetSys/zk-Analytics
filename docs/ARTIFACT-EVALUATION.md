@@ -31,7 +31,7 @@ to be diffed against bundled reference data.
 | Disk | 10 GB | 50+ GB (RocksDB/FoundationDB + datasets) |
 | Time | minutes | **hours per experiment** (see table below) |
 
-Software (installed by `scripts/setup_local_e2e.sh --all`): `clang`/`libclang`
+Software (installed by `scripts/setup/setup_local_e2e.sh --all`): `clang`/`libclang`
 (RocksDB), the RISC Zero toolchain via `rzup` (guest compiler + `r0vm`), and —
 for the distributed/e2e paths — Docker (Kafka), FoundationDB 7.1, `protoc`
 (Trillian). See the README "Build" section for the manual dependency list.
@@ -43,7 +43,7 @@ git clone https://github.com/Froot-NetSys/zk-Analytics
 cd zk-Analytics
 
 # One-shot environment (deps + Kafka/FDB via Docker + RISC Zero toolchain):
-./scripts/setup_local_e2e.sh --all
+./scripts/setup/setup_local_e2e.sh --all
 # or just the build deps:
 sudo apt-get install -y clang libclang-dev
 curl -L https://risczero.com/install | bash && rzup install
@@ -80,7 +80,7 @@ the proving path works; the remaining steps differ only in producing *real*
 |---|---|---|
 | Vehicle CO2 emissions (Canada) | **bundled** | `testdata/car_emission/my2015-2024-fuel-consumption-ratings.csv` |
 | Google Cluster v3 | not bundled | Download the public Google cluster-usage traces (v3) and place the per-machine CSVs under `testdata/google_cluster_data/input/`. |
-| CAIDA backbone traces | not bundled | Requires CAIDA's academic **data-sharing agreement** (cannot be redistributed). Obtain a PCAP, then `PCAP=/path/to.pcap.gz ./scripts/prep_caida.sh` → `testdata/caida_pcap/caida_txt/`. |
+| CAIDA backbone traces | not bundled | Requires CAIDA's academic **data-sharing agreement** (cannot be redistributed). Obtain a PCAP, then `PCAP=/path/to.pcap.gz ./scripts/setup/prep_caida.sh` → `testdata/caida_pcap/caida_txt/`. |
 
 The synthetic-workload experiments (Figs 5–7, §7.2) need **no external data** —
 they are the most self-contained to reproduce.
@@ -93,12 +93,12 @@ proportionally slower. Compare regenerated outputs against the cited paper item.
 | Paper item | Command | Approx time | Needs | Compare against |
 |---|---|---|---|---|
 | §7.2 online commitment throughput | `BENCH_INPUT=<trace> PARALLEL_CHAINS=1 cargo run -p data_source --release` (sweep batch size in the trace); reports `serial_ns_per_event` / `hash_fn=sha256` | minutes | 1 core | §7.2 (1.6–6.7 M commits/s) |
-| Fig 6 — single-machine aggregation, native | `FIG=6 ./scripts/run_figures_native.sh` | ~30 min | 56 cores | Fig 6 (native columns) |
-| Fig 6 — single-machine aggregation, ZK | `FIG=6 SYNTH_KEYS=1024 ./scripts/run_figures_zk.sh` | hours | AVX-512, 56 cores | Fig 6 (proof gen/verify/size/mem) |
-| Fig 7 — query, native | `./scripts/run_fig7_native.sh` | ~30 min | local Kafka+FDB | Fig 7 (native query times) |
+| Fig 6 — single-machine aggregation, native | `FIG=6 ./scripts/eval/run_figures_native.sh` | ~30 min | 56 cores | Fig 6 (native columns) |
+| Fig 6 — single-machine aggregation, ZK | `FIG=6 SYNTH_KEYS=1024 ./scripts/eval/run_figures_zk.sh` | hours | AVX-512, 56 cores | Fig 6 (proof gen/verify/size/mem) |
+| Fig 7 — query, native | `./scripts/eval/run_fig7_native.sh` | ~30 min | local Kafka+FDB | Fig 7 (native query times) |
 | Fig 7 — query, ZK (1/2/4 epochs) | `make eval-zkvm-query-proofs` | ~1–2 h | AVX-512 | Fig 7 (prove/verify/size at small epoch counts) |
-| Fig 5 + Table 3 — distributed aggregation (1/2/4/8) | `FIG=5 ./scripts/run_figures_zk.sh` (and `run_figures_native.sh`) | many hours | **8-node SSH cluster** (see below) | Fig 5, Table 3 |
-| Fig 4 + Tables 1–2 — end-to-end, native | `./scripts/prep_caida.sh` then `make eval-non-zk-e2e` | ~1–4 h | Google+CAIDA data | Fig 4, Table 2 (non-ZK columns) |
+| Fig 5 + Table 3 — distributed aggregation (1/2/4/8) | `FIG=5 ./scripts/eval/run_figures_zk.sh` (and `run_figures_native.sh`) | many hours | **8-node SSH cluster** (see below) | Fig 5, Table 3 |
+| Fig 4 + Tables 1–2 — end-to-end, native | `./scripts/setup/prep_caida.sh` then `make eval-non-zk-e2e` | ~1–4 h | Google+CAIDA data | Fig 4, Table 2 (non-ZK columns) |
 | Aggregation re-anchor at 56 threads | `make eval-zkvm-aggr-56` | ~3.5 h (CM) | AVX-512, 56 cores | Table 2 / Fig 4 (ZK aggregation) |
 
 Merge the measured CSVs into the comparison tables/plots with:
@@ -112,7 +112,7 @@ make eval-non-zk-all          # regenerates results/*.csv, plots/*.pdf, summary.
 These need multiple machines reachable over SSH. Copy
 `scripts/distributed_e2e_config.example.sh`, set `SSH_USER`, the node IPs
 (`scripts/ip_defaults.sh`), and `KAFKA_BROKERS`/`FDB_*`, then drive the runs with
-`scripts/run_distributed_baseline.sh` / `run_table2_sweep.sh`. See
+`scripts/distributed/run_distributed_baseline.sh` / `run_table2_sweep.sh`. See
 `docs/DISTRIBUTED_SETUP.md` and `docs/DISTRIBUTED_E2E_GUIDE.md`. On a
 single machine you can still reproduce the **native** distributed cells and all
 single-machine ZK results above.
@@ -147,8 +147,8 @@ evaluation.
 - zkVM proving OOMs or is extremely slow → you are likely without AVX-512 or with
   too little RAM; use `make eval-zkvm-dev-mode` for functional validation
   instead, and reduce `SYNTH_KEYS` / epoch sizes.
-- Reset local state between runs: `./scripts/reset_rocksdb.sh`,
-  `./scripts/reset_fdb.sh`.
+- Reset local state between runs: `./scripts/setup/reset_rocksdb.sh`,
+  `./scripts/setup/reset_fdb.sh`.
 - `make eval-non-zk-baseline` on a fresh clone produces **native-only** CSVs
   under `results/` (the repo ships no measured-ZK data); the ZK-comparison
   columns/summary populate after you run `make eval-zkvm-aggr-56` (real proofs)

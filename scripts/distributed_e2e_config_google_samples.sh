@@ -199,19 +199,19 @@ export SKIP_FINAL_COLLECTION=0
 # export NUM_QUERY_ITERATIONS=100
 
 # To test different epoch counts, run multiple evaluations:
-# export QUERY_EPOCHS=5   && ./scripts/run_distributed_e2e.sh evaluate
-# export QUERY_EPOCHS=10  && ./scripts/run_distributed_e2e.sh evaluate
-# export QUERY_EPOCHS=50  && ./scripts/run_distributed_e2e.sh evaluate
+# export QUERY_EPOCHS=5   && ./scripts/distributed/run_distributed_e2e.sh evaluate
+# export QUERY_EPOCHS=10  && ./scripts/distributed/run_distributed_e2e.sh evaluate
+# export QUERY_EPOCHS=50  && ./scripts/distributed/run_distributed_e2e.sh evaluate
 
 # To test prefix-based queries:
 # export QUERY_TYPES="samples_sum_prefix"
 # export KEY_PREFIX="metric.cpu."
-# ./scripts/run_distributed_e2e.sh evaluate
+# ./scripts/distributed/run_distributed_e2e.sh evaluate
 
 # To compare global sum vs prefix sum:
 # export QUERY_TYPES="samples_sum,samples_sum_prefix"
 # export KEY_PREFIX="sensor.temperature."
-# ./scripts/run_distributed_e2e.sh evaluate
+# ./scripts/distributed/run_distributed_e2e.sh evaluate
 
 # ============================================
 # Usage Examples
@@ -219,34 +219,34 @@ export SKIP_FINAL_COLLECTION=0
 
 # Run full E2E test:
 #   source distributed_e2e_config.example.sh
-#   ./scripts/run_distributed_e2e.sh start
+#   ./scripts/distributed/run_distributed_e2e.sh start
 
 # Just evaluate querier (after data is loaded):
 #   source distributed_e2e_config.example.sh
-#   ./scripts/run_distributed_e2e.sh evaluate
+#   ./scripts/distributed/run_distributed_e2e.sh evaluate
 
 # Evaluate with prefix filtering:
 #   export QUERY_TYPES="samples_sum_prefix,samples_avg"
 #   export KEY_PREFIX="metric.cpu."
-#   ./scripts/run_distributed_e2e.sh evaluate
+#   ./scripts/distributed/run_distributed_e2e.sh evaluate
 
 # Test multiple prefixes sequentially:
 #   for prefix in "metric.cpu." "metric.memory." "metric.disk."; do
 #     export KEY_PREFIX="$prefix"
 #     export QUERY_TYPES="samples_sum_prefix"
-#     ./scripts/run_distributed_e2e.sh evaluate
+#     ./scripts/distributed/run_distributed_e2e.sh evaluate
 #   done
 
 # Compare global vs filtered results:
 #   export QUERY_TYPES="samples_sum,samples_sum_prefix"
 #   export KEY_PREFIX="sensor."
-#   ./scripts/run_distributed_e2e.sh evaluate
+#   ./scripts/distributed/run_distributed_e2e.sh evaluate
 
 # Check status:
-#   ./scripts/run_distributed_e2e.sh status
+#   ./scripts/distributed/run_distributed_e2e.sh status
 
 # Generate report:
-#   ./scripts/run_distributed_e2e.sh report
+#   ./scripts/distributed/run_distributed_e2e.sh report
 
 # Stop all components:
-#   ./scripts/run_distributed_e2e.sh stop
+#   ./scripts/distributed/run_distributed_e2e.sh stop

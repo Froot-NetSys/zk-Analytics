@@ -94,9 +94,9 @@ cargo run -p querier --release
 For a full local run (Kafka + FoundationDB via Docker, orchestrated in tmux):
 
 ```bash
-./scripts/setup_local_e2e.sh --all   # install deps, Kafka/FDB, RISC Zero toolchain
-./scripts/run_local_e2e.sh start      # data_source -> Kafka -> aggregator -> FDB -> querier
-./scripts/run_local_e2e.sh status
+./scripts/setup/setup_local_e2e.sh --all   # install deps, Kafka/FDB, RISC Zero toolchain
+./scripts/eval/run_local_e2e.sh start      # data_source -> Kafka -> aggregator -> FDB -> querier
+./scripts/eval/run_local_e2e.sh status
 ```
 
 
@@ -120,7 +120,7 @@ All services use the same data directory:
 Reset RocksDB storage:
 
 ```bash
-ROCKSDB_PATH=/mydata/rocksdb ./scripts/reset_rocksdb.sh
+ROCKSDB_PATH=/mydata/rocksdb ./scripts/setup/reset_rocksdb.sh
 ```
 
 ## Aggregator

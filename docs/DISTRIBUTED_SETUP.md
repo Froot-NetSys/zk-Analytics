@@ -69,7 +69,7 @@ ssh ubuntu@192.0.2.1 "echo 'SSH OK'"
 Create a configuration file based on the example:
 
 ```bash
-cp scripts/example_distributed_setup.sh scripts/my_distributed_setup.sh
+cp scripts/distributed/example_distributed_setup.sh scripts/my_distributed_setup.sh
 ```
 
 Edit `scripts/my_distributed_setup.sh`:
@@ -106,7 +106,7 @@ The setup script will:
 source scripts/my_distributed_setup.sh
 
 # Run the setup (choose sequential for easier debugging)
-./scripts/setup_remote_e2e.sh
+./scripts/setup/setup_remote_e2e.sh
 ```
 
 **Note:** The first run will take 10-20 minutes per machine due to Rust compilation.
@@ -127,7 +127,7 @@ KAFKA_BROKERS="$KAFKA_BROKERS" \
 NUM_AGGREGATORS="1 2 4 8" \
 REPEATS="3" \
 WARMUP_EVENTS="10000" \
-./scripts/bench_distributed_aggregators.sh
+./scripts/distributed/bench_distributed_aggregators.sh
 ```
 
 ## Understanding the Distribution
@@ -308,7 +308,7 @@ EOF
 
 # 2. Setup machines (first time only)
 source scripts/my_setup.sh
-./scripts/setup_remote_e2e.sh
+./scripts/setup/setup_remote_e2e.sh
 
 # 3. Run benchmarks
 source scripts/my_setup.sh
@@ -318,7 +318,7 @@ REMOTE_PROJECT_PATH="$REMOTE_PROJECT_DIR" \
 KAFKA_BROKERS="$KAFKA_BROKERS" \
 NUM_AGGREGATORS="2 4 8" \
 REPEATS="5" \
-./scripts/bench_distributed_aggregators.sh
+./scripts/distributed/bench_distributed_aggregators.sh
 
 # 4. Results are saved to bench_csv/distributed/
 ls -lh bench_csv/distributed/

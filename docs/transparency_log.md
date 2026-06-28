@@ -55,15 +55,15 @@ A self-contained Trillian stack and an end-to-end smoke test are provided:
 - `deploy/trillian/docker-compose.yml` — MySQL (with Trillian's schema), a log
   server (gRPC `:8090`), and a log signer.
 - `deploy/trillian/storage.sql` — Trillian's MySQL schema (vendored, Apache-2.0).
-- `scripts/trillian_smoke.sh` — brings up the stack, creates a log (tree) via
+- `scripts/util/trillian_smoke.sh` — brings up the stack, creates a log (tree) via
   `createtree`, then appends checkpoints through the real `QueueLeaf` path and
   asserts success.
 - `data_source/src/bin/trillian_smoke.rs` — the `trillian-smoke`
   binary it runs (fails loudly if the client silently falls back to no-op).
 
 ```bash
-scripts/trillian_smoke.sh          # up -> create tree -> smoke -> down
-KEEP=1 scripts/trillian_smoke.sh   # leave the stack running
+scripts/util/trillian_smoke.sh          # up -> create tree -> smoke -> down
+KEEP=1 scripts/util/trillian_smoke.sh   # leave the stack running
 ```
 
 Verified round-trip: client `QueueLeaf` → log server → signer → MySQL, with the

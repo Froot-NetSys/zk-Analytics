@@ -23,7 +23,7 @@ Ensure you've completed the distributed setup:
 source scripts/my_setup.sh
 
 # Setup remote machines (if not already done)
-./scripts/setup_remote_e2e.sh
+./scripts/setup/setup_remote_e2e.sh
 ```
 
 ### 2. Run E2E Test
@@ -33,30 +33,30 @@ source scripts/my_setup.sh
 REMOTE_MACHINES="192.0.2.1 192.0.2.2 192.0.2.3" \
 SSH_USER="ubuntu" \
 KAFKA_BROKERS="192.0.2.100:9092" \
-./scripts/run_distributed_e2e.sh start
+./scripts/distributed/run_distributed_e2e.sh start
 ```
 
 ### 3. Monitor and Validate
 
 ```bash
 # Check status of all components
-./scripts/run_distributed_e2e.sh status
+./scripts/distributed/run_distributed_e2e.sh status
 
 # Validate data consistency
-./scripts/run_distributed_e2e.sh validate
+./scripts/distributed/run_distributed_e2e.sh validate
 
 # Generate detailed report
-./scripts/run_distributed_e2e.sh report
+./scripts/distributed/run_distributed_e2e.sh report
 ```
 
 ### 4. Stop and Clean Up
 
 ```bash
 # Stop all components
-./scripts/run_distributed_e2e.sh stop
+./scripts/distributed/run_distributed_e2e.sh stop
 
 # Clean up logs and temporary files
-./scripts/run_distributed_e2e.sh clean
+./scripts/distributed/run_distributed_e2e.sh clean
 ```
 
 ## Configuration
@@ -86,7 +86,7 @@ REMOTE_MACHINES="192.0.2.1 192.0.2.2" \
 SSH_USER="ubuntu" \
 NUM_AGGREGATORS=1 \
 EVENTS=100000 \
-./scripts/run_distributed_e2e.sh start
+./scripts/distributed/run_distributed_e2e.sh start
 ```
 
 #### Medium Test (Typical Workload)
@@ -96,7 +96,7 @@ SSH_USER="ubuntu" \
 NUM_AGGREGATORS=2 \
 EVENTS=5000000 \
 EPOCH_TYPE=histogram \
-./scripts/run_distributed_e2e.sh start
+./scripts/distributed/run_distributed_e2e.sh start
 ```
 
 #### Large Test (Stress Test)
@@ -106,7 +106,7 @@ SSH_USER="ubuntu" \
 NUM_AGGREGATORS=4 \
 EVENTS=50000000 \
 BATCH_SIZE=1000 \
-./scripts/run_distributed_e2e.sh start
+./scripts/distributed/run_distributed_e2e.sh start
 ```
 
 ## What the Script Does
@@ -144,37 +144,37 @@ BATCH_SIZE=1000 \
 ### start
 Runs the complete end-to-end test:
 ```bash
-./scripts/run_distributed_e2e.sh start
+./scripts/distributed/run_distributed_e2e.sh start
 ```
 
 ### stop
 Stops all components (local and remote):
 ```bash
-./scripts/run_distributed_e2e.sh stop
+./scripts/distributed/run_distributed_e2e.sh stop
 ```
 
 ### status
 Shows current status of all components:
 ```bash
-./scripts/run_distributed_e2e.sh status
+./scripts/distributed/run_distributed_e2e.sh status
 ```
 
 ### validate
 Runs data validation queries:
 ```bash
-./scripts/run_distributed_e2e.sh validate
+./scripts/distributed/run_distributed_e2e.sh validate
 ```
 
 ### report
 Generates detailed evaluation report:
 ```bash
-./scripts/run_distributed_e2e.sh report
+./scripts/distributed/run_distributed_e2e.sh report
 ```
 
 ### clean
 Removes all logs and temporary files:
 ```bash
-./scripts/run_distributed_e2e.sh clean
+./scripts/distributed/run_distributed_e2e.sh clean
 ```
 
 ## Monitoring
@@ -184,7 +184,7 @@ Removes all logs and temporary files:
 Check status while the test is running:
 ```bash
 # Overall status
-./scripts/run_distributed_e2e.sh status
+./scripts/distributed/run_distributed_e2e.sh status
 
 # Kafka consumer lag
 docker exec kafka kafka-consumer-groups \
@@ -313,16 +313,16 @@ source scripts/my_setup.sh
 # Run small validation test
 EVENTS=100000 \
 NUM_AGGREGATORS=1 \
-./scripts/run_distributed_e2e.sh start
+./scripts/distributed/run_distributed_e2e.sh start
 
 # Validate results
-./scripts/run_distributed_e2e.sh validate
+./scripts/distributed/run_distributed_e2e.sh validate
 
 # Generate report
-./scripts/run_distributed_e2e.sh report
+./scripts/distributed/run_distributed_e2e.sh report
 
 # Clean up
-./scripts/run_distributed_e2e.sh clean
+./scripts/distributed/run_distributed_e2e.sh clean
 
 echo "CI E2E test passed!"
 ```
@@ -342,8 +342,8 @@ declare -a tests=(
 
 for test in "${tests[@]}"; do
     echo "Running test: $test"
-    eval "$test ./scripts/run_distributed_e2e.sh start"
-    ./scripts/run_distributed_e2e.sh clean
+    eval "$test ./scripts/distributed/run_distributed_e2e.sh start"
+    ./scripts/distributed/run_distributed_e2e.sh clean
     sleep 60
 done
 ```
@@ -359,36 +359,36 @@ export SSH_USER="ubuntu"
 export KAFKA_BROKERS="192.0.2.100:9092"
 
 # 2. Ensure machines are set up
-./scripts/setup_remote_e2e.sh
+./scripts/setup/setup_remote_e2e.sh
 
 # 3. Run E2E test
-./scripts/run_distributed_e2e.sh start
+./scripts/distributed/run_distributed_e2e.sh start
 
 # 4. While running, monitor in another terminal
-watch -n 5 './scripts/run_distributed_e2e.sh status'
+watch -n 5 './scripts/distributed/run_distributed_e2e.sh status'
 
 # 5. After completion, review report
 cat bench_csv/distributed_e2e/e2e_report_*.txt
 
 # 6. Clean up
-./scripts/run_distributed_e2e.sh stop
-./scripts/run_distributed_e2e.sh clean
+./scripts/distributed/run_distributed_e2e.sh stop
+./scripts/distributed/run_distributed_e2e.sh clean
 ```
 
 ### Testing Different Aggregation Types
 
 ```bash
 # Test samples aggregation
-EPOCH_TYPE=samples EVENTS=1000000 ./scripts/run_distributed_e2e.sh start
-./scripts/run_distributed_e2e.sh clean
+EPOCH_TYPE=samples EVENTS=1000000 ./scripts/distributed/run_distributed_e2e.sh start
+./scripts/distributed/run_distributed_e2e.sh clean
 
 # Test histogram aggregation
-EPOCH_TYPE=histogram EVENTS=1000000 ./scripts/run_distributed_e2e.sh start
-./scripts/run_distributed_e2e.sh clean
+EPOCH_TYPE=histogram EVENTS=1000000 ./scripts/distributed/run_distributed_e2e.sh start
+./scripts/distributed/run_distributed_e2e.sh clean
 
 # Test count-min sketch aggregation
-EPOCH_TYPE=cm EVENTS=1000000 ./scripts/run_distributed_e2e.sh start
-./scripts/run_distributed_e2e.sh clean
+EPOCH_TYPE=cm EVENTS=1000000 ./scripts/distributed/run_distributed_e2e.sh start
+./scripts/distributed/run_distributed_e2e.sh clean
 ```
 
 ## Next Steps

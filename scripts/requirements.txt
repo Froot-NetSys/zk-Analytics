@@ -2,7 +2,7 @@
 # Only one third-party package is needed; everything else used by the
 # scripts/*.py helpers is in the Python standard library.
 #
-# Installed automatically by `scripts/setup_local_e2e.sh --all`
+# Installed automatically by `scripts/setup/setup_local_e2e.sh --all`
 # (as the apt package python3-matplotlib). For a pip-based / non-Debian
 # environment instead run:  python3 -m pip install -r scripts/requirements.txt
 #
