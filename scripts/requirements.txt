@@ -1,0 +1,12 @@
+# Python dependencies for the evaluation scripts.
+# Only one third-party package is needed; everything else used by the
+# scripts/*.py helpers is in the Python standard library.
+#
+# Installed automatically by `scripts/setup_local_e2e.sh --all`
+# (as the apt package python3-matplotlib). For a pip-based / non-Debian
+# environment instead run:  python3 -m pip install -r scripts/requirements.txt
+#
+# matplotlib is used only by build_non_zk_results.py to render the PDF plots;
+# the CSV/summary outputs are produced even if it is absent (plotting is skipped
+# with a warning).
+matplotlib

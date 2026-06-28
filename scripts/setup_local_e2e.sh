@@ -69,7 +69,9 @@ install_deps() {
         tmux \
         jq \
         lsof \
-        net-tools
+        net-tools \
+        python3 \
+        python3-matplotlib
 
     log_info "System dependencies installed"
 }
