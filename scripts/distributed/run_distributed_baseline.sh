@@ -70,6 +70,10 @@ RESULTS_DIR="$ROOT_DIR/results"; METRICS="$RESULTS_DIR/_dist_metrics.jsonl"
 FDB_SUBSPACE="zktel_dist_${TAG}"; KAFKA_TOPIC="raw_${TAG}"
 mkdir -p "$LOGDIR" "$RESULTS_DIR"
 if [ "$MODE" = native ]; then NO_ZKVM_PROOF=1; QUERY_NO_PROVE=1; else NO_ZKVM_PROOF=0; QUERY_NO_PROVE=0; fi
+# RISC0_DEV_MODE=1 executes the zkVM guests but fakes the STARK proof (fast,
+# end-to-end pipeline validation without hours of proving). Forwarded to the
+# remote aggregators and the node0 querier below. Default 0 = real proofs.
+RISC0_DEV_MODE="${RISC0_DEV_MODE:-0}"
 
 LBIN="$ROOT_DIR/target/release"   # local (node0) binaries
 RBIN="$DIST/bin"                        # remote node binaries
@@ -185,7 +189,7 @@ AGG_START=$(date +%s.%N)
 for ((i=0;i<NUM_AGGREGATORS;i++)); do
   spawn_node "${NODES[i]}" "rm -f ${ALOG}_$i.DONE; \
     nohup python3 $RBIN/mem_trace.py --out ${AMEM}_$i.csv --summary ${AMEM}_$i.json --match aggregator --match r0vm --interval $MEM_INTERVAL > /dev/null 2>&1 & \
-    env $REMOTE_ENV E2E_TIMING=1 NO_ZKVM_PROOF=$NO_ZKVM_PROOF RAW_ROCKSDB_PATH=${RAWP}_$i AGG_ROCKSDB_PATH=${AGGP}_$i AGGREGATOR_ID=$i FDB_CLUSTER_FILE=$FDB_CLUSTER_FILE FDB_SUBSPACE=$FDB_SUBSPACE AGGR_IDLE_TIMEOUT_SECS=$AGGR_IDLE_TIMEOUT_SECS AGGR_PIPELINE=rocksdb RAYON_NUM_THREADS=56 \
+    env $REMOTE_ENV E2E_TIMING=1 RISC0_DEV_MODE=$RISC0_DEV_MODE NO_ZKVM_PROOF=$NO_ZKVM_PROOF RAW_ROCKSDB_PATH=${RAWP}_$i AGG_ROCKSDB_PATH=${AGGP}_$i AGGREGATOR_ID=$i FDB_CLUSTER_FILE=$FDB_CLUSTER_FILE FDB_SUBSPACE=$FDB_SUBSPACE AGGR_IDLE_TIMEOUT_SECS=$AGGR_IDLE_TIMEOUT_SECS AGGR_PIPELINE=rocksdb RAYON_NUM_THREADS=56 \
     /usr/bin/time -v $RBIN/aggregator --rocksdb --mode $AGG_MODE --threads 56 > ${ALOG}_$i.log 2> ${ALOG}_${i}_time.log; \
     pkill -INT -f mem_trace.py 2>/dev/null; sleep 3; touch ${ALOG}_$i.DONE"
 done
@@ -216,7 +220,7 @@ echo "[dist] querier on $COORD ..."
 nohup python3 "$ROOT_DIR/scripts/lib/mem_trace.py" --out "$WORK/mem_query.csv" --summary "$WORK/mem_query.json" \
   --match querier --match r0vm --interval "$MEM_INTERVAL" > "$LOGDIR/mempoll_q.log" 2>&1 &
 QMEM=$!
-/usr/bin/time -v env E2E_TIMING=1 BENCH_PRINT=1 QUERY_NO_PROVE="$QUERY_NO_PROVE" \
+/usr/bin/time -v env E2E_TIMING=1 RISC0_DEV_MODE=$RISC0_DEV_MODE BENCH_PRINT=1 QUERY_NO_PROVE="$QUERY_NO_PROVE" \
   FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" FDB_SUBSPACE="$FDB_SUBSPACE" HTTP_LISTEN="0.0.0.0:$QUERIER_PORT" \
   "$LBIN/querier" > "$LOGDIR/querier.log" 2>&1 &
 QPID=$!
