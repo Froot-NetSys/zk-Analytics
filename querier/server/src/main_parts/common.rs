@@ -658,15 +658,6 @@ fn build_cm_epoch_state(s: &AggCmStruct) -> Result<acore::CmEpochState> {
     // Direct u32 unpacking - no conversion needed!
     let counts = unpack_cm_counts_u32(&s.counts_u32)?;
 
-    eprintln!("[DEBUG] Building CmEpochState: seq={} num_counts={} total_sum={} prev_chain_hash_len={}",
-        s.sequence, counts.len(), s.total_sum, s.prev_chain_hash.len());
-
-    // Log sample of counts for debugging
-    if counts.len() >= 10 {
-        eprintln!("[DEBUG]   counts[0..10]: {:?}", &counts[0..10]);
-        eprintln!("[DEBUG]   counts sum (first 100): {}", counts.iter().take(100).map(|&c| c as u64).sum::<u64>());
-    }
-
     // Unpack heap data
     let heap_data = unpack_cm_heap_fixed(&s.heap_fixed)?;
     let mut heap_keys: Vec<[u8; 15]> = Vec::with_capacity(acore::CM_TOPK_SLOTS);
@@ -679,13 +670,6 @@ fn build_cm_epoch_state(s: &AggCmStruct) -> Result<acore::CmEpochState> {
         heap_vals.push(v);
         heap_occ.push(o);
     }
-
-    // Log heap data for debugging
-    let occupied_heap = heap_occ.iter().filter(|&&o| o != 0).count();
-    eprintln!("[DEBUG]   heap: occupied_slots={} first_3_vals={:?}",
-        occupied_heap,
-        heap_vals.iter().take(3).collect::<Vec<_>>()
-    );
 
     Ok(acore::CmEpochState {
         counts,
@@ -700,9 +684,6 @@ fn build_cm_epoch_state(s: &AggCmStruct) -> Result<acore::CmEpochState> {
 fn build_histogram_epoch_state(s: &AggHistStruct) -> Result<acore::HistogramEpochState> {
     let per_key_data = unpack_hist_per_key_table_fixed(&s.table_fixed)?;
     let mut per_key_histograms: Vec<acore::KeyHistogram> = Vec::with_capacity(per_key_data.len());
-
-    eprintln!("[DEBUG] Building HistogramEpochState: seq={} num_keys={} total_count={} total_sum={} prev_chain_hash_len={}",
-        s.sequence, per_key_data.len(), s.total_count, s.total_sum, s.prev_chain_hash.len());
 
     for (key_id, bucket_counts, total_count, total_sum) in per_key_data {
         let mut bucket_counts_array = [0u32; acore::HISTOGRAM_SLOTS];
@@ -740,9 +721,6 @@ fn build_samples_epoch_state(s: &VerifiedSamplesStruct) -> Result<acore::Samples
         "samples table_fixed length mismatch: got {} expected {} for {} entries",
         table_fixed.len(), expected_len, num_entries
     );
-
-    eprintln!("[DEBUG] Building SamplesEpochState: seq={} num_entries={} total_count={} total_sum={} prev_chain_hash_len={}",
-        s.sequence, num_entries, s.total_count, s.total_sum, s.prev_chain_hash.len());
 
     let mut per_key: Vec<acore::BucketEntry> = Vec::with_capacity(num_entries);
     let mut offset = 4; // Skip length prefix
