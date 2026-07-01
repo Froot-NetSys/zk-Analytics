@@ -116,8 +116,15 @@ fn verify_epoch_chain_integrity(chain_links: &[EpochChainLink]) {
             i
         );
 
-        // Verify chain linkage (except for first epoch)
-        if i > 0 {
+        // Verify chain linkage within each aggregator's chain. In the distributed
+        // deployment the queried epochs come from multiple independent per-aggregator
+        // chains, each rooted at the genesis hash ([0u8; 32]). A link whose
+        // prev_chain_hash is genesis starts a new chain, so it is not linked to the
+        // previous (different-chain) epoch. Callers sort epochs by
+        // (aggregator_id, sequence) so each chain is contiguous and ordered; the
+        // per-epoch hash computation above is still verified for every link.
+        const GENESIS: [u8; 32] = [0u8; 32];
+        if i > 0 && link.prev_chain_hash != GENESIS {
             let prev_link = &chain_links[i - 1];
             assert!(
                 link.prev_chain_hash == prev_link.final_chain_hash,

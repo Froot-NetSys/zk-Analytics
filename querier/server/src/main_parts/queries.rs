@@ -531,7 +531,10 @@ fn get_verified_samples_structs_by_sequences(
         .into_iter()
         .filter(|v| sequences.contains(&v.sequence))
         .collect();
-    structs.sort_by_key(|v| v.sequence);
+    // Distributed: epochs come from multiple independent per-aggregator chains,
+    // each rooted at the genesis hash. Order by (aggregator_id, sequence) so each
+    // chain is contiguous and in sequence order for chain-linkage verification.
+    structs.sort_by_key(|v| (v.aggregator_id, v.sequence));
     Ok(structs)
 }
 
@@ -1328,7 +1331,7 @@ async fn query(
                         .into_iter()
                         .filter(|v| v.ingest_time_ms >= start_ms && v.ingest_time_ms <= end_ms)
                         .collect();
-                    structs.sort_by_key(|v| v.sequence);
+                    structs.sort_by_key(|v| (v.aggregator_id, v.sequence));
                     structs
                 }
                 EpochSelect::Latest { epochs } => {
@@ -1450,7 +1453,7 @@ async fn query(
                         .into_iter()
                         .filter(|v| v.ingest_time_ms >= start_ms && v.ingest_time_ms <= end_ms)
                         .collect();
-                    structs.sort_by_key(|v| v.sequence);
+                    structs.sort_by_key(|v| (v.aggregator_id, v.sequence));
                     structs
                 }
                 EpochSelect::Latest { epochs } => {
@@ -1576,7 +1579,7 @@ async fn query(
                         .into_iter()
                         .filter(|v| v.ingest_time_ms >= start_ms && v.ingest_time_ms <= end_ms)
                         .collect();
-                    structs.sort_by_key(|v| v.sequence);
+                    structs.sort_by_key(|v| (v.aggregator_id, v.sequence));
                     structs
                 }
                 EpochSelect::Latest { epochs } => {
@@ -1700,7 +1703,7 @@ async fn query(
                         .into_iter()
                         .filter(|v| v.ingest_time_ms >= start_ms && v.ingest_time_ms <= end_ms)
                         .collect();
-                    structs.sort_by_key(|v| v.sequence);
+                    structs.sort_by_key(|v| (v.aggregator_id, v.sequence));
                     structs
                 }
                 EpochSelect::Latest { epochs } => {
@@ -1825,7 +1828,7 @@ async fn query(
                         .into_iter()
                         .filter(|v| v.ingest_time_ms >= start_ms && v.ingest_time_ms <= end_ms)
                         .collect();
-                    structs.sort_by_key(|v| v.sequence);
+                    structs.sort_by_key(|v| (v.aggregator_id, v.sequence));
                     structs
                 }
                 EpochSelect::Latest { epochs } => {
@@ -1949,7 +1952,7 @@ async fn query(
                         .into_iter()
                         .filter(|v| v.ingest_time_ms >= start_ms && v.ingest_time_ms <= end_ms)
                         .collect();
-                    structs.sort_by_key(|v| v.sequence);
+                    structs.sort_by_key(|v| (v.aggregator_id, v.sequence));
                     structs
                 }
                 EpochSelect::Latest { epochs } => {
