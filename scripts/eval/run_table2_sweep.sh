@@ -18,7 +18,7 @@ REMOTE_ENV="LD_LIBRARY_PATH=$DIST/lib PATH=$HOME/.cargo/bin:\$PATH"
 MEM_INTERVAL="${MEM_INTERVAL:-2.0}"; SEED="${SEED:-0xA66A1E}"
 OUT="$ROOT_DIR/results/table2_distributed.csv"; JSONL="$ROOT_DIR/results/_table2_metrics.jsonl"
 : > "$JSONL"
-export SAMPLES_HT_BUCKETS=64 SAMPLES_HT_BUCKET_CAP=4 HISTOGRAM_SLOTS=32 CM_TOPK_SLOTS=100
+source "$ROOT_DIR/scripts/lib/common.sh"
 
 on_node(){ local n="$1"; shift; if [ "$n" = node0 ]; then bash -c "$*"; else ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$n" "$*"; fi; }
 spawn(){ local n="$1"; shift; local c="$*"; if [ "$n" = node0 ]; then setsid bash -c "$c" </dev/null >/dev/null 2>&1 & else ssh -n -o BatchMode=yes "$n" "setsid bash -c '$c' </dev/null >/dev/null 2>&1 & echo ok" >/dev/null 2>&1; fi; }

@@ -11,7 +11,7 @@ REMOTE_ENV="LD_LIBRARY_PATH=$DIST/lib PATH=$HOME/.cargo/bin:\$PATH"
 KAFKA_BROKERS="192.0.2.1:9092"; FDB_CLUSTER_FILE="$HOME/zktel-dist/fdb.cluster"
 QPORT="${QUERIER_PORT:-8090}"; COMMIT=8; EPOCH_LOGS=8192
 N_EPOCHS="${N_EPOCHS:-256}"; COUNTS="${COUNTS:-1 2 4 8 16 32 64 128 256}"
-export SAMPLES_HT_BUCKETS=64 SAMPLES_HT_BUCKET_CAP=4 HISTOGRAM_SLOTS=32 CM_TOPK_SLOTS=100
+source "$ROOT_DIR/scripts/lib/common.sh"
 OUT="$ROOT_DIR/results/fig7_native.csv"; echo "epoch_type,query,queried_epochs,query_total_s,fdb_lookup_s,deserialize_s,query_compute_s" > "$OUT"
 KILL='for p in $(pgrep -x zktelemetry-ris); do kill -9 $p 2>/dev/null; done; for p in $(pgrep -x kafka-consumer); do kill -9 $p 2>/dev/null; done; pkill -9 -f mem_trace.py 2>/dev/null'
 
