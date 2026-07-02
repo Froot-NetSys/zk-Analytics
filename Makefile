@@ -1,7 +1,7 @@
 # zk-Analytics camera-ready evaluation targets.
 
 .PHONY: eval-non-zk-baseline eval-non-zk-e2e eval-zkvm-query-proofs \
-        eval-zkvm-aggr-56 eval-zkvm-dev-mode eval-non-zk-all
+        eval-zkvm-aggr-56 eval-zkvm-dev-mode eval-dev-zk-e2e eval-non-zk-all
 
 # (1) Non-ZK native baseline + zkVM cost breakdown (the core must-do eval).
 # Reruns the native analytics (no zkVM) and regenerates the CSVs, plots, and
@@ -25,6 +25,12 @@ eval-zkvm-query-proofs:
 # the zkVM execution / witness-gen times for the cost breakdown.
 eval-zkvm-dev-mode:
 	./scripts/eval/run_zkvm_dev_mode.sh
+
+# (3c) Distributed end-to-end for all 3 datasets in zkVM dev mode (guests
+# executed, STARK proof faked). Full cluster pipeline in minutes. Set KAFKA_HOST
+# for your cluster. Writes results/e2e_dev_zk/<dataset>_dev_zk.jsonl.
+eval-dev-zk-e2e:
+	./scripts/eval/run_dev_zk_3datasets.sh
 
 # (4) Native end-to-end baseline on the real Fig.4 datasets (Google/CAIDA),
 # no zkVM proof and no data-source hash commitment. Writes
