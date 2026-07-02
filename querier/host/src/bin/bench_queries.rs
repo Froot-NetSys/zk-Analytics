@@ -333,15 +333,41 @@ fn generate_cm_epoch_multi_source(
 // Chain Link Generation
 // ============================================================================
 
-/// Build epoch chain links with correct state commits and linkage
-fn build_chain_links<S, F>(states: &[S], state_commit_fn: F) -> Vec<EpochChainLink>
+/// Reorder epochs by (aggregator_id, sequence) so each aggregator's chain is
+/// contiguous. A stable sort by aggregator_id preserves the per-aggregator
+/// sequence order, mirroring how the querier sorts epochs fetched from the store
+/// before chain verification. Returns the reordered states and aggregator ids.
+fn order_by_aggregator<S: Clone>(states: &[S], aggregator_ids: &[u32]) -> (Vec<S>, Vec<u32>) {
+    let mut order: Vec<usize> = (0..states.len()).collect();
+    order.sort_by_key(|&i| aggregator_ids[i]); // stable
+    let states = order.iter().map(|&i| states[i].clone()).collect();
+    let aggs = order.iter().map(|&i| aggregator_ids[i]).collect();
+    (states, aggs)
+}
+
+/// Build epoch chain links modelling the real distributed deployment: the
+/// queried epochs come from `num_aggregators` independent per-aggregator chains,
+/// each rooted at the genesis hash ([0u8; 32]). `states` and `aggregator_ids`
+/// must be ordered by (aggregator_id, sequence) — see `order_by_aggregator` — so
+/// each aggregator's chain is contiguous; `prev` is reset to genesis at every
+/// aggregator boundary rather than linking across independent chains.
+fn build_chain_links<S, F>(
+    states: &[S],
+    aggregator_ids: &[u32],
+    state_commit_fn: F,
+) -> Vec<EpochChainLink>
 where
     F: Fn(&S) -> [u8; 32],
 {
-    let mut links = Vec::new();
+    let mut links = Vec::with_capacity(states.len());
     let mut prev = [0u8; 32]; // genesis
+    let mut cur_agg: Option<u32> = None;
 
-    for state in states {
+    for (state, &agg) in states.iter().zip(aggregator_ids.iter()) {
+        if cur_agg != Some(agg) {
+            prev = [0u8; 32]; // each aggregator's chain starts at genesis
+            cur_agg = Some(agg);
+        }
         let sc = state_commit_fn(state);
         let final_hash = sha256_bytes(&[TAG_EPOCH_CHAIN, &prev, &sc]);
         links.push(EpochChainLink {
@@ -883,7 +909,10 @@ fn main() -> Result<()> {
                 state
             })
             .collect();
-        let histogram_links = build_chain_links(&histogram_epochs, histogram_epoch_state_commit);
+        let (histogram_epochs, histogram_agg_ids) =
+            order_by_aggregator(&histogram_epochs, &epoch_aggregator_ids);
+        let histogram_links =
+            build_chain_links(&histogram_epochs, &histogram_agg_ids, histogram_epoch_state_commit);
 
         if !skip_histogram_bucket {
             println!("Running histogram/bucket benchmark...");
@@ -959,7 +988,8 @@ fn main() -> Result<()> {
                 state
             })
             .collect();
-        let cm_links = build_chain_links(&cm_epochs, cm_epoch_state_commit);
+        let (cm_epochs, cm_agg_ids) = order_by_aggregator(&cm_epochs, &epoch_aggregator_ids);
+        let cm_links = build_chain_links(&cm_epochs, &cm_agg_ids, cm_epoch_state_commit);
 
         // Get first key from heap for estimate query (fallback to first source's first key)
         let first_key = if !cm_epochs.is_empty() && cm_epochs[0].heap_occ[0] != 0 {
@@ -1023,7 +1053,10 @@ fn main() -> Result<()> {
                 state
             })
             .collect();
-        let samples_links = build_chain_links(&samples_epochs, samples_epoch_state_commit);
+        let (samples_epochs, samples_agg_ids) =
+            order_by_aggregator(&samples_epochs, &epoch_aggregator_ids);
+        let samples_links =
+            build_chain_links(&samples_epochs, &samples_agg_ids, samples_epoch_state_commit);
 
         // Get first source for pattern matching query
         let first_sources = &epoch_source_assignments[0];
