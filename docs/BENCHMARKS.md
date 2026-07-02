@@ -10,6 +10,10 @@ table (Figures 4–7, Tables 1–3) to a concrete command. The main entry points
 - `make eval-zkvm-dev-mode`, `make eval-zkvm-query-proofs`,
   `make eval-zkvm-aggr-56` — zkVM proving benchmarks (execution-only, query
   proofs, and the 56-thread aggregation re-anchor).
+- `make eval-dev-zk-e2e` — distributed end-to-end for all 3 datasets in zkVM
+  **dev mode** (full cluster pipeline, guests executed, STARK proof faked;
+  minutes not hours). Set `KAFKA_HOST` for your cluster; writes
+  `results/e2e_dev_zk/<dataset>_dev_zk.jsonl`.
 - `FIG=6 ./scripts/eval/run_figures_native.sh` / `run_figures_zk.sh` —
   single-machine aggregation proving time / proof size / memory (Figure 6).
 - `./scripts/eval/run_fig7_native.sh` — query benchmark (Figure 7).
