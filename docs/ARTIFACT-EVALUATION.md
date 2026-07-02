@@ -92,7 +92,7 @@ proportionally slower. Compare regenerated outputs against the cited paper item.
 
 | Paper item | Command | Approx time | Needs | Compare against |
 |---|---|---|---|---|
-| §7.2 online commitment throughput | `BENCH_INPUT=<trace> PARALLEL_CHAINS=1 cargo run -p data_source --release` (sweep batch size in the trace); reports `serial_ns_per_event` / `hash_fn=sha256` | minutes | 1 core | §7.2 (1.6–6.7 M commits/s) |
+| §7.2 online commitment throughput | `BENCH_INPUT=synthetic cargo run -p data_source --release -- --streaming --bench --events 1000000 --key-mod 4096` (sweep `--key-mod` / `--events`); reports `hash_fn=sha256`, `serial_ns_per_event`, `parallel_ns_per_event` | minutes | 1 core | §7.2 (1.6–6.7 M commits/s) |
 | Fig 6 — single-machine aggregation, native | `FIG=6 ./scripts/eval/run_figures_native.sh` | ~30 min | 56 cores | Fig 6 (native columns) |
 | Fig 6 — single-machine aggregation, ZK | `FIG=6 SYNTH_KEYS=1024 ./scripts/eval/run_figures_zk.sh` | hours | AVX-512, 56 cores | Fig 6 (proof gen/verify/size/mem) |
 | Fig 7 — query, native | `./scripts/eval/run_fig7_native.sh` | ~30 min | local Kafka+FDB | Fig 7 (native query times) |
@@ -100,6 +100,14 @@ proportionally slower. Compare regenerated outputs against the cited paper item.
 | Fig 5 + Table 3 — distributed aggregation (1/2/4/8) | `FIG=5 ./scripts/eval/run_figures_zk.sh` (and `run_figures_native.sh`) | many hours | **8-node SSH cluster** (see below) | Fig 5, Table 3 |
 | Fig 4 + Tables 1–2 — end-to-end, native | `./scripts/setup/prep_caida.sh` then `make eval-non-zk-e2e` | ~1–4 h | Google+CAIDA data | Fig 4, Table 2 (non-ZK columns) |
 | Aggregation re-anchor at 56 threads | `make eval-zkvm-aggr-56` | ~3.5 h (CM) | AVX-512, 56 cores | Table 2 / Fig 4 (ZK aggregation) |
+
+> **Kafka/FDB endpoints.** Every row that drives the real pipeline (the Fig 6/7
+> native runs and all distributed cells go through
+> `run_distributed_baseline.sh`) connects to Kafka and FoundationDB. The shipped
+> scripts use RFC 5737 **placeholder IPs** (e.g. `192.0.2.1`), so point them at
+> your setup first: after `setup_local_e2e.sh --all` use `KAFKA_HOST=localhost`
+> (single machine), or set `KAFKA_HOST`/`KAFKA_BROKERS` + `FDB_CLUSTER_FILE` and
+> the node IPs in `scripts/ip_defaults.sh` for a cluster.
 
 Merge the measured CSVs into the comparison tables/plots with:
 
