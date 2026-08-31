@@ -1,14 +1,48 @@
 # Artifact Evaluation Guide
 
-This guide walks a reviewer from a clean clone to reproducing the experiments in
-*"Zero-Knowledge Cloud Analytics."* It is organized so you can validate the
-artifact **functionally in minutes** and then reproduce individual paper results
-as time and hardware allow.
+This is the reviewer entry point for the SIGCOMM 2026 artifact accompanying
+*"Zero-Knowledge Cloud Analytics."* It provides two evaluation paths:
+
+- **Quick functional evaluation (recommended first):** build the artifact and
+  exercise its native and zkVM code paths in minutes, without AVX-512 or a
+  cluster. Follow Steps 0 and 1.
+- **Paper-results reproduction:** select experiments from Step 2 according to
+  the available hardware, time, and dataset access. Real proof generation takes
+  hours; the distributed results require multiple machines.
+
+In short: run the four commands in **Reviewer quick start**, check that the
+expected files appear, and then use the experiment matrix to choose any
+full-scale results to reproduce.
 
 The repository ships **no precomputed results**: every experiment regenerates its
 own `results/` and `plots/` locally, and you compare those against the numbers
 and figures reported in the paper (Figures 4–7, Tables 1–3). Nothing here needs
 to be diffed against bundled reference data.
+
+## Reviewer quick start
+
+On a clean Ubuntu/Debian x86-64 machine, complete the dependency installation in
+Step 0, then run:
+
+```bash
+mkdir -p target/tmp
+cargo build --release
+make eval-non-zk-baseline
+make eval-zkvm-dev-mode
+```
+
+Success means all commands exit with status 0 and the following outputs exist:
+
+| Check | What it validates | Expected output |
+|---|---|---|
+| `cargo build --release` | Host crates and RISC Zero guest ELFs compile | release artifacts under `target/` |
+| `make eval-non-zk-baseline` | Native aggregation and query analytics run | CSVs in `results/`, summary Markdown, and (when matplotlib is available) PDFs in `plots/` |
+| `make eval-zkvm-dev-mode` | The real zkVM guests execute and witnesses are generated; cryptographic proving is skipped | `results/zkvm_dev_*.csv` |
+
+This is the intended functional evaluation. `RISC0_DEV_MODE=1` is deliberately
+used only by the dev-mode target; it does **not** produce a proof and must not be
+used to evaluate proof-generation or verification performance. For real proofs,
+run the applicable Step 2 rows.
 
 ## Claims under evaluation
 
@@ -31,10 +65,12 @@ to be diffed against bundled reference data.
 | Disk | 10 GB | 50+ GB (RocksDB/FoundationDB + datasets) |
 | Time | minutes | **hours per experiment** (see table below) |
 
-Software (installed by `scripts/setup/setup_local_e2e.sh --all`): `clang`/`libclang`
-(RocksDB), the RISC Zero toolchain via `rzup` (guest compiler + `r0vm`), and —
-for the distributed/e2e paths — Docker (Kafka), FoundationDB 7.1, `protoc`
-(Trillian). See the README "Build" section for the manual dependency list.
+The setup script supports Ubuntu/Debian and uses `sudo` to install packages.
+`scripts/setup/setup_local_e2e.sh --all` installs `clang`/`libclang` (RocksDB),
+the RISC Zero toolchain via `rzup` (guest compiler + `r0vm`), Docker, Kafka, and
+FoundationDB 7.1. Docker, Kafka, FoundationDB, and `protoc` are needed only for
+the distributed/end-to-end paths. See the README "Build" section for the manual
+dependency list.
 
 ## Step 0 — Setup and build
 
@@ -42,22 +78,26 @@ for the distributed/e2e paths — Docker (Kafka), FoundationDB 7.1, `protoc`
 git clone https://github.com/Froot-NetSys/zk-Analytics
 cd zk-Analytics
 
-# One-shot environment (deps + Kafka/FDB via Docker + RISC Zero toolchain):
+# Full environment (installs system packages and starts Kafka/FDB via Docker):
 ./scripts/setup/setup_local_e2e.sh --all
-# or just the build deps:
-sudo apt-get install -y clang libclang-dev
+
+# Alternatively, install only the quick-check build dependencies manually:
+sudo apt-get update
+sudo apt-get install -y build-essential clang libclang-dev cmake libssl-dev pkg-config
 curl -L https://risczero.com/install | bash && rzup install
 
 mkdir -p target/tmp            # required by .cargo/config.toml (EXDEV workaround)
 cargo build --release          # host crates + RISC Zero guest ELFs
 ```
 
-A successful `cargo build --release` is the **Functional** badge: it compiles
-all host crates *and* the zkVM guest ELFs.
+A successful build compiles all host crates and the zkVM guest ELFs. Complete
+both Step 1 commands as the functional check; building by itself does not
+exercise the analytics or proving paths.
 
 ## Step 1 — Kick the tires (minutes)
 
-These two runs validate the full pipeline without hours of proving.
+These two runs validate the core native analytics and zkVM execution paths
+without hours of proving.
 
 ```bash
 # (a) Native (non-ZK) baseline — runs the exact aggregation/query analytics
@@ -70,9 +110,10 @@ make eval-non-zk-baseline
 make eval-zkvm-dev-mode
 ```
 
-If both complete and write CSVs under `results/`, the artifact is functional and
-the proving path works; the remaining steps differ only in producing *real*
-(slow) STARK proofs and scaling up input sizes.
+If both complete and write the expected CSVs under `results/`, the artifact's
+native analytics and zkVM guest/witness paths are functional. The dev-mode run
+does not validate cryptographic proof generation or verification; use the real
+proof rows in Step 2 for those claims.
 
 ## Datasets
 
@@ -88,7 +129,9 @@ they are the most self-contained to reproduce.
 ## Step 2 — Reproduce the experiments
 
 Times are order-of-magnitude on a 56-core AVX-512 node; smaller machines are
-proportionally slower. Compare regenerated outputs against the cited paper item.
+proportionally slower. Commands in this table are independent unless their
+"Needs" column says otherwise, so reviewers may select a subset. Compare each
+regenerated output against the cited paper item.
 
 | Paper item | Command | Approx time | Needs | Compare against |
 |---|---|---|---|---|
