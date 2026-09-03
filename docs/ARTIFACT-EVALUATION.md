@@ -212,20 +212,170 @@ they are the most self-contained to reproduce.
 ### Step 2 — Reproduce the experiments
 
 Times are order-of-magnitude on a 56-core AVX-512 node; smaller machines are
-proportionally slower. Commands in this table are independent unless their
-"Needs" column says otherwise, so reviewers may select a subset. Compare each
-regenerated output against the cited paper item.
+proportionally slower. The experiments below are independent unless noted, so
+reviewers may select a subset.
 
-| Paper item | Command | Approx time | Needs | Compare against |
-|---|---|---|---|---|
-| §7.2 online commitment throughput | `BENCH_INPUT=synthetic cargo run -p data_source --release -- --streaming --bench --events 1000000 --key-mod 4096` (sweep `--key-mod` / `--events`); reports `hash_fn=sha256`, `serial_ns_per_event`, `parallel_ns_per_event` | minutes | 1 core | §7.2 (1.6–6.7 M commits/s) |
-| Fig 6 — single-machine aggregation, native | `FIG=6 ./scripts/eval/run_figures_native.sh` | ~30 min | 56 cores | Fig 6 (native columns) |
-| Fig 6 — single-machine aggregation, ZK | `FIG=6 SYNTH_KEYS=1024 ./scripts/eval/run_figures_zk.sh` | hours | AVX-512, 56 cores | Fig 6 (proof gen/verify/size/mem) |
-| Fig 7 — query, native | `./scripts/eval/run_fig7_native.sh` | ~30 min | local Kafka+FDB | Fig 7 (native query times) |
-| Fig 7 — query, ZK (1/2/4 epochs) | `make eval-zkvm-query-proofs` | ~1–2 h | AVX-512 | Fig 7 (prove/verify/size at small epoch counts) |
-| Fig 5 + Table 3 — distributed aggregation (1/2/4/8) | `FIG=5 ./scripts/eval/run_figures_zk.sh` (and `run_figures_native.sh`) | many hours | **8-node SSH cluster** (see below) | Fig 5, Table 3 |
-| Fig 4 + Tables 1–2 — end-to-end, native | `./scripts/setup/prep_caida.sh` then `make eval-non-zk-e2e` | ~1–4 h | Google+CAIDA data | Fig 4, Table 2 (non-ZK columns) |
-| Aggregation re-anchor at 56 threads | `make eval-zkvm-aggr-56` | ~3.5 h (CM) | AVX-512, 56 cores | Table 2 / Fig 4 (ZK aggregation) |
+#### §7.2 — online commitment throughput
+
+This single-machine experiment needs one CPU core and synthetic input. It takes
+minutes. Sweep `--key-mod` or `--events` to evaluate additional input shapes.
+
+```bash
+BENCH_INPUT=synthetic cargo run -p data_source --release -- \
+  --streaming --bench --events 1000000 --key-mod 4096
+```
+
+Expected terminal output includes these fields (numeric values depend on the
+machine):
+
+```text
+hash_fn=sha256
+serial_ns_per_event=<number>
+parallel_ns_per_event=<number>
+```
+
+Convert nanoseconds per event to events per second and compare with the §7.2
+range of 1.6–6.7 million commitments/s.
+
+#### Figure 6 — single-machine native aggregation
+
+This run needs local Kafka and FoundationDB and takes approximately 30 minutes
+on the paper machine.
+
+```bash
+KAFKA_HOST=localhost FIG=6 ./scripts/eval/run_figures_native.sh
+```
+
+Expected output: `results/fig6_native.csv`. It contains one row for every
+`var` (number of keys) and aggregation `mode`, with the following header:
+
+```text
+var,mode,agg_total_s,kafka_recv_s,rocksdb_raw_insert_s,rocksdb_raw_read_s,aggr_compute_s,fdb_write_s,query_total_s,fdb_lookup_s,deserialize_s,query_compute_s,agg_per_node_host_rss_mb,agg_cluster_host_rss_mb,agg_prover_rss_mb,query_rss_mb,query_prover_rss_mb
+```
+
+Compare the native timing and memory columns with the native series in Figure
+6.
+
+#### Figure 6 — single-machine ZK aggregation
+
+This run generates real proofs. It requires AVX-512 and many cores and takes
+hours (roughly 28 minutes for histogram, 86 minutes for samples, and 185 minutes
+for Count-Min on the paper machine).
+
+```bash
+KAFKA_HOST=localhost FIG=6 SYNTH_KEYS=1024 \
+  ./scripts/eval/run_figures_zk.sh
+```
+
+Expected output: `results/fig6_zk.csv`, with one row for each of `histogram`,
+`samples`, and `cm`. Its header is:
+
+```text
+var,mode,agg_total_s,prove_s,verify_s,kafka_recv_s,rocksdb_raw_insert_s,fdb_write_s,agg_host_rss_mb,agg_prover_rss_mb,agg_cluster_rss_mb,proof_bytes,journal_bytes,query_total_s,query_prove_s,query_verify_s,query_fdb_lookup_s,query_host_rss_mb,query_prover_rss_mb
+```
+
+Compare `prove_s`, `verify_s`, `proof_bytes`, and the RSS columns with Figure 6.
+
+#### Figure 7 — native query scaling
+
+This run uses local Kafka and FoundationDB and takes approximately 30 minutes.
+
+```bash
+KAFKA_HOST=localhost ./scripts/eval/run_fig7_native.sh
+```
+
+Expected output: `results/fig7_native.csv`. It contains query measurements for
+increasing `queried_epochs` and has this header:
+
+```text
+epoch_type,query,queried_epochs,query_total_s,fdb_lookup_s,deserialize_s,query_compute_s
+```
+
+Compare `query_total_s` and its component columns with the native curves in
+Figure 7.
+
+#### Figure 7 — ZK query proofs
+
+This reduced 1/2/4-epoch run produces real proofs, requires AVX-512, and takes
+approximately 1–2 hours on the paper machine.
+
+```bash
+make eval-zkvm-query-proofs
+```
+
+Expected output: `results/zkvm_query_proofs.csv`, containing:
+
+```text
+epoch_type,query,num_epochs,events_per_epoch,keys,prove_ms,verify_ms,max_rss_kb,proof_bytes
+```
+
+There should be rows for 1, 2, and 4 epochs. Compare `prove_ms`, `verify_ms`,
+and `proof_bytes` with the corresponding small-epoch points in Figure 7.
+
+#### Figure 5 and Table 3 — distributed aggregation
+
+These experiments require up to eight SSH-reachable machines plus Kafka and
+FoundationDB. Run the native sweep first:
+
+```bash
+FIG=5 ./scripts/eval/run_figures_native.sh
+```
+
+Expected output: `results/fig5_native.csv`, with rows for 1, 2, 4, and 8
+aggregators for each aggregation mode. It uses the same native CSV header shown
+for Figure 6; here `var` is the number of aggregators.
+
+Then run the real-proof subset:
+
+```bash
+FIG=5 ./scripts/eval/run_figures_zk.sh
+```
+
+Expected output: `results/fig5_zk.csv`. By default it contains
+`histogram:1`, `histogram:8`, `samples:8`, and `cm:8`; override `FIG5_SPECS` to
+run more cells. It uses the same ZK CSV header shown for Figure 6. Compare
+aggregation time and speedup with Figure 5, and the component measurements with
+Table 3. Expect this run to take many hours.
+
+#### Figure 4 and Tables 1–2 — native end-to-end workloads
+
+Download the Google data and prepare the access-controlled CAIDA trace as
+described under Datasets. Then run:
+
+```bash
+PCAP=/path/to/trace.pcap.gz ./scripts/setup/prep_caida.sh
+make eval-non-zk-e2e
+```
+
+Expected output: `results/non_zk_e2e_baseline.csv`. A dataset is skipped with an
+explicit `[e2e] SKIP ...` message if its input is unavailable. Successful rows
+have this header:
+
+```text
+dataset,mode,bench_input,epochs,epoch_logs,total_logs,native_ms_total,native_rss_mb,zkvm_dev_exec_ms,zk_agg_proofgen_s,zk_query_proofgen_s,slowdown_native_vs_proof,zk_provenance
+```
+
+Compare the native columns with Figure 4 and the non-ZK columns in Table 2.
+Depending on dataset size, this takes approximately 1–4 hours.
+
+#### Figure 4 / Table 2 — 56-thread ZK aggregation anchor
+
+This single-node real-proof run requires AVX-512 and 56 cores. Count-Min takes
+approximately 3.5 hours on the paper machine.
+
+```bash
+make eval-zkvm-aggr-56
+```
+
+Expected output: `results/zkvm_aggregation_56threads.csv`, with one row for each
+aggregation mode and this header:
+
+```text
+mode,threads,series,samples_per_series,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,time_max_rss_kb
+```
+
+Use `prove_ms_total`, `verify_ms_total`, and the RSS columns to compare with the
+ZK aggregation values in Figure 4 and Table 2.
 
 > **Kafka/FDB endpoints.** Every row that drives the real pipeline (the Fig 6/7
 > native runs and all distributed cells go through
@@ -238,8 +388,13 @@ regenerated output against the cited paper item.
 Merge the measured CSVs into the comparison tables/plots with:
 
 ```bash
-make eval-non-zk-all          # regenerates results/*.csv, plots/*.pdf, summary.md
+make eval-non-zk-all
 ```
+
+Expected outputs include `results/non_zk_aggregation_baseline.csv`,
+`results/non_zk_query_baseline.csv`, and `results/zk_cost_breakdown.csv`.
+When measured ZK inputs are present, it also creates
+`results/non_zk_baseline_summary.md` and PDFs under `plots/`.
 
 ### Distributed experiments (Fig 5, Table 3, Fig 4 distributed)
 
