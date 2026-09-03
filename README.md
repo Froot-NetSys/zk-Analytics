@@ -11,27 +11,9 @@ described in the paper *"Zero-Knowledge Cloud Analytics."*
 ## Artifact evaluation (SIGCOMM 2026)
 
 Reviewers should start with the **[Artifact Evaluation
-Guide](docs/ARTIFACT-EVALUATION.md)**. It separates a quick functional check
-(minutes, no AVX-512 required) from the full paper experiments (hours and, for
-some results, a multi-node cluster). The guide also maps every evaluation
-command to the corresponding paper figure or table, lists the required datasets
-and hardware, and explains the generated outputs.
-
-After installing the prerequisites described in the guide, the shortest
-evaluation path is:
-
-```bash
-mkdir -p target/tmp
-cargo build --release
-make eval-non-zk-baseline
-make eval-zkvm-dev-mode
-```
-
-The two evaluation targets regenerate their results locally under `results/`
-and plots under `plots/`; the repository does not include precomputed results.
-`eval-zkvm-dev-mode` executes the real zkVM guests and generates witnesses, but
-intentionally skips the slow cryptographic proof generation. See the guide
-before running real proofs or distributed experiments.
+Guide](docs/ARTIFACT-EVALUATION.md)** for the artifact description, hardware
+requirements, installation, quick-start commands, and the mapping from
+evaluation scripts to paper figures and tables.
 
 ## Architecture
 

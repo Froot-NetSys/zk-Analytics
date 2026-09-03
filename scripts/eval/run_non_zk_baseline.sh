@@ -22,7 +22,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-THREADS_MATCHED="${THREADS_MATCHED:-32}"
+if [[ -z "${THREADS_MATCHED:-}" ]]; then
+  if [[ -s results/zkvm_aggregation_56threads.csv ]]; then
+    THREADS_MATCHED=56
+  else
+    THREADS_MATCHED=32
+  fi
+fi
 THREADS_MAX="${THREADS_MAX:-$(nproc)}"
 REPS_AGG="${REPS:-7}"
 REPS_Q="${REPS:-9}"
@@ -50,13 +56,16 @@ echo "[non-zk] native AGGREGATION matrix (epoch=16384 logs, batch=8) ..."
 # Aggregator counts 1/2/4/8 -> 8/4/2/1 epochs handled by the busiest aggregator.
 for mode in samples histogram cm; do
   for epochs in 8 4 2 1; do
-    for th in "$THREADS_MATCHED" "$THREADS_MAX"; do
+    # Always retain the 32-thread paper baseline, add the thread count matched
+    # to measured zkVM data, and include all locally available cores.  Sort -u
+    # avoids rerunning a count when two of these values are equal.
+    while read -r th; do
       echo "### mode=$mode epochs=$epochs threads=$th" >> "$AGG_RAW"
       "$BIN" --task aggregation --mode "$mode" \
         --series 128 --samples-per-series 128 --batch 8 \
         --epochs "$epochs" --threads "$th" --reps "$REPS_AGG" --seed "$SEED" \
         >> "$AGG_RAW"
-    done
+    done < <(printf '%s\n' 32 "$THREADS_MATCHED" "$THREADS_MAX" | sort -n -u)
   done
 done
 
@@ -77,4 +86,4 @@ done
 echo "[non-zk] merging with measured zkVM numbers ..."
 python3 scripts/lib/build_non_zk_results.py
 
-echo "[non-zk] done. See results/non_zk_baseline_summary.md"
+echo "[non-zk] done. See results/non_zk_{aggregation,query}_baseline.csv and results/zk_cost_breakdown.csv"

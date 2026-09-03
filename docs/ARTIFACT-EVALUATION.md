@@ -1,25 +1,69 @@
-# Artifact Evaluation Guide
+# Artifact Evaluation: Zero-Knowledge Cloud Analytics
 
-This is the reviewer entry point for the SIGCOMM 2026 artifact accompanying
-*"Zero-Knowledge Cloud Analytics."* It provides two evaluation paths:
+## Artifact description
 
-- **Quick functional evaluation (recommended first):** build the artifact and
-  exercise its native and zkVM code paths in minutes, without AVX-512 or a
-  cluster. Follow Steps 0 and 1.
-- **Paper-results reproduction:** select experiments from Step 2 according to
-  the available hardware, time, and dataset access. Real proof generation takes
-  hours; the distributed results require multiple machines.
+This artifact contains the source code, datasets that may be redistributed, and
+instructions needed to reproduce the experiments in *"Zero-Knowledge Cloud
+Analytics."* More precisely, it contains:
 
-In short: run the four commands in **Reviewer quick start**, check that the
-expected files appear, and then use the experiment matrix to choose any
-full-scale results to reproduce.
+- instructions to configure a local machine or multi-node cluster;
+- instructions to build the data source, aggregation and query components,
+  including their RISC Zero zkVM guests;
+- scripts to launch the experiments and generate CSV and PDF results; and
+- a short functional evaluation that does not require hours of proof generation.
 
-The repository ships **no precomputed results**: every experiment regenerates its
-own `results/` and `plots/` locally, and you compare those against the numbers
-and figures reported in the paper (Figures 4–7, Tables 1–3). Nothing here needs
-to be diffed against bundled reference data.
+By running the experiments, reviewers can reproduce or validate the results in:
 
-## Reviewer quick start
+- **Figure 4 and Tables 1–2:** end-to-end performance on Google cluster, CAIDA,
+  and vehicle-emissions workloads;
+- **Figure 5 and Table 3:** distributed aggregation scalability;
+- **Figure 6:** single-machine aggregation time, proof verification, proof size,
+  and memory;
+- **Figure 7:** query proving and verification as the number of epochs grows;
+  and
+- **§7.2:** online SHA-256 log-commitment throughput.
+
+The repository contains no precomputed result files. Each experiment creates
+its own `results/` and `plots/` outputs locally. Reviewers should compare these
+outputs with the corresponding paper figure or table; exact wall-clock values
+vary with hardware.
+
+## Artifact location
+
+<https://github.com/Froot-NetSys/zk-Analytics>
+
+## Artifact commit/tag/version
+
+Use the commit or release tag supplied in the SIGCOMM 2026 artifact submission.
+During kick-the-tires, the tip of `main` may contain documentation or portability
+fixes reported by reviewers. The final evaluated version will be preserved as an
+immutable release/archive.
+
+## Hardware requirements
+
+**Requires specific hardware for full reproduction.** The short functional
+evaluation runs on a single x86-64 machine with 8 GB RAM and 10 GB free disk.
+Efficient real proof generation requires AVX-512, at least 64 GB RAM, and many
+CPU cores. The paper used Intel Xeon Gold 5512U machines with 56 cores.
+Distributed Figure 4/5 and Table 3 experiments require up to eight machines
+reachable over SSH, plus Kafka and FoundationDB. Native and dev-mode checks do
+not require this cluster.
+
+## Comments for the AEC
+
+- Start with **Getting started instructions** below. This checks the native
+  analytics and zkVM guest/witness paths without running expensive proofs.
+- Real proof generation takes hours per experiment. Larger Figure 4 and Figure
+  7 points can take days; the guide identifies reduced-scale proof runs.
+- The vehicle-emissions dataset is bundled. Google Cluster v3 must be downloaded
+  separately. CAIDA traces require an academic data-sharing agreement and cannot
+  be redistributed by the authors.
+- Only one evaluator should use a shared Kafka/FoundationDB deployment at a
+  time. Reset commands are listed under Troubleshooting.
+- Please report setup or execution problems through the artifact-submission
+  discussion channel so the instructions can be corrected during kick-the-tires.
+
+## Getting started instructions
 
 On a clean Ubuntu/Debian x86-64 machine, complete the dependency installation in
 Step 0, then run:
@@ -36,7 +80,7 @@ Success means all commands exit with status 0 and the following outputs exist:
 | Check | What it validates | Expected output |
 |---|---|---|
 | `cargo build --release` | Host crates and RISC Zero guest ELFs compile | release artifacts under `target/` |
-| `make eval-non-zk-baseline` | Native aggregation and query analytics run | CSVs in `results/`, summary Markdown, and (when matplotlib is available) PDFs in `plots/` |
+| `make eval-non-zk-baseline` | Native aggregation and query analytics run | `results/non_zk_aggregation_baseline.csv`, `results/non_zk_query_baseline.csv`, and `results/zk_cost_breakdown.csv`; comparison summary/plots are added when measured ZK inputs exist |
 | `make eval-zkvm-dev-mode` | The real zkVM guests execute and witnesses are generated; cryptographic proving is skipped | `results/zkvm_dev_*.csv` |
 
 This is the intended functional evaluation. `RISC0_DEV_MODE=1` is deliberately
@@ -56,13 +100,15 @@ run the applicable Step 2 rows.
 4. **Practical at moderate scale** — end-to-end proof generation completes in
    hours, proofs stay compact, verification stays constant (Figs 4, 6, 7).
 
-## Requirements
+## Detailed instructions
+
+### Requirements
 
 | | Functional check / native baselines | Full ZK reproduction |
 |---|---|---|
 | CPU | any x86-64 | **AVX-512**, many cores (paper: Xeon Gold 5512U, 56 cores) |
 | RAM | 8 GB | ≥ 64 GB (prover peaks ~9–10 GB/node; parallel proving needs headroom) |
-| Disk | 10 GB | 50+ GB (RocksDB/FoundationDB + datasets) |
+| Disk | **10 GB free** | 50+ GB free (RocksDB/FoundationDB + datasets) |
 | Time | minutes | **hours per experiment** (see table below) |
 
 The setup script supports Ubuntu/Debian and uses `sudo` to install packages.
@@ -72,20 +118,56 @@ FoundationDB 7.1. Docker, Kafka, FoundationDB, and `protoc` are needed only for
 the distributed/end-to-end paths. See the README "Build" section for the manual
 dependency list.
 
-## Step 0 — Setup and build
+### Step 0 — Setup and build
 
 ```bash
 git clone https://github.com/Froot-NetSys/zk-Analytics
 cd zk-Analytics
+```
 
-# Full environment (installs system packages and starts Kafka/FDB via Docker):
+#### Option A — install all prerequisites (full local environment)
+
+Use the repository setup script on Ubuntu/Debian to install the build tools,
+RISC Zero toolchain, Docker, Kafka, and FoundationDB, and to start the local
+Kafka/FoundationDB containers:
+
+```bash
 ./scripts/setup/setup_local_e2e.sh --all
+```
 
-# Alternatively, install only the quick-check build dependencies manually:
+The script invokes `sudo`. If it adds your account to the `docker` group, log
+out and back in before running Docker without `sudo`.
+
+#### Option B — install only the quick-start prerequisites
+
+Use this smaller installation when evaluating only the build, native baseline,
+and zkVM dev-mode targets:
+
+```bash
 sudo apt-get update
-sudo apt-get install -y build-essential clang libclang-dev cmake libssl-dev pkg-config
-curl -L https://risczero.com/install | bash && rzup install
+sudo apt-get install -y build-essential clang libclang-dev cmake \
+  libssl-dev pkg-config python3 python3-matplotlib
 
+curl -fsSL https://risczero.com/install | bash
+source "$HOME/.bashrc"
+rzup install
+```
+
+Confirm that both the host and RISC Zero tools are available:
+
+```bash
+clang --version
+cargo --version
+rzup show
+r0vm --version
+```
+
+All four commands must succeed. If `rzup` is not found immediately after the
+installer finishes, open a new shell or run `source "$HOME/.bashrc"` again.
+
+#### Build
+
+```bash
 mkdir -p target/tmp            # required by .cargo/config.toml (EXDEV workaround)
 cargo build --release          # host crates + RISC Zero guest ELFs
 ```
@@ -94,14 +176,15 @@ A successful build compiles all host crates and the zkVM guest ELFs. Complete
 both Step 1 commands as the functional check; building by itself does not
 exercise the analytics or proving paths.
 
-## Step 1 — Kick the tires (minutes)
+### Step 1 — Kick the tires (minutes)
 
 These two runs validate the core native analytics and zkVM execution paths
 without hours of proving.
 
 ```bash
 # (a) Native (non-ZK) baseline — runs the exact aggregation/query analytics
-#     natively, regenerates results/ + plots/. Seconds.
+#     natively and regenerates CSVs under results/. About two minutes on a
+#     64-core machine after compilation; a cold build takes longer.
 make eval-non-zk-baseline
 
 # (b) zkVM pipeline in DEV MODE (RISC0_DEV_MODE=1): guests are executed and the
@@ -115,7 +198,7 @@ native analytics and zkVM guest/witness paths are functional. The dev-mode run
 does not validate cryptographic proof generation or verification; use the real
 proof rows in Step 2 for those claims.
 
-## Datasets
+### Datasets
 
 | Dataset | Status | How to obtain |
 |---|---|---|
@@ -126,7 +209,7 @@ proof rows in Step 2 for those claims.
 The synthetic-workload experiments (Figs 5–7, §7.2) need **no external data** —
 they are the most self-contained to reproduce.
 
-## Step 2 — Reproduce the experiments
+### Step 2 — Reproduce the experiments
 
 Times are order-of-magnitude on a 56-core AVX-512 node; smaller machines are
 proportionally slower. Commands in this table are independent unless their

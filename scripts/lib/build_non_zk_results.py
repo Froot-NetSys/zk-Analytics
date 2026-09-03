@@ -171,13 +171,18 @@ def build_aggregation_csv():
         for nagg in AGG_COUNTS:
             epochs = TOTAL_EPOCHS // nagg
             n32 = nat[(mode, epochs, 32)]
-            n56 = nat[(mode, epochs, 56)]
             nm = nat[(mode, epochs, matched)]
             nat_single_ms = float(nm["native_single_thread_ms"])
             nat_matched_ms = float(nm["native_max_core_ms"])       # matched-core run
             nat_32_ms = float(n32["native_max_core_ms"])           # 32-core (debug)
-            nat_mem_mb = max(float(n32["peak_rss_kb"]),
-                             float(n56["peak_rss_kb"])) / 1024.0
+            # Use the peak across every locally measured thread count.  A
+            # quick evaluation must not require a 56-thread row on machines
+            # whose all-core count differs from the paper's 56-core host.
+            nat_mem_mb = max(
+                float(row["peak_rss_kb"])
+                for (row_mode, row_epochs, _), row in nat.items()
+                if row_mode == mode and row_epochs == epochs
+            ) / 1024.0
             if z is None:
                 # native-only row: no measured zkVM data to compare against.
                 rows.append([
