@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run REAL zkVM query proofs at small epoch counts (1/2/4) to anchor the query
-# slowdown with measured data (the paper's Fig. 4 only gives the 16-epoch point).
+# Run the Figure 7 REAL zkVM query proofs at small epoch counts (1/2/4).
 # Uses the self-contained bench_queries binary (in-memory synthetic epochs ->
 # real RISC Zero proof; no FDB/RocksDB needed).
 #

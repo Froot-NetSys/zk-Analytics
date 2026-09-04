@@ -1,7 +1,14 @@
 # zk-Analytics camera-ready evaluation targets.
 
 .PHONY: eval-non-zk-baseline eval-non-zk-e2e eval-zkvm-query-proofs \
-        eval-zkvm-aggr-56 eval-zkvm-dev-mode eval-dev-zk-e2e eval-non-zk-all
+        eval-zkvm-aggr-56 eval-zkvm-dev-mode eval-dev-zk-e2e eval-non-zk-all \
+        eval-kill eval-fig6-aggregator-dev eval-fig6-aggregator-zk \
+        eval-fig7-query-dev eval-fig7-query-zk eval-table2-native \
+        eval-fig5-table3-zk eval-fig4-vehicle-dev eval-fig4-vehicle-zk
+
+# Stop local processes left by an interrupted evaluation run.
+eval-kill:
+	./scripts/util/kill_bench_processes.sh
 
 # (1) Non-ZK native baseline + zkVM cost breakdown (the core must-do eval).
 # Reruns the native analytics (no zkVM) and regenerates the CSVs, plots, and
@@ -25,11 +32,35 @@ eval-zkvm-query-proofs:
 eval-zkvm-dev-mode:
 	./scripts/eval/run_zkvm_dev_mode.sh
 
-# (3c) Distributed end-to-end for all 3 datasets in zkVM dev mode (guests
-# executed, STARK proof faked). Full cluster pipeline in minutes. Set KAFKA_HOST
-# for your cluster. Writes results/e2e_dev_zk/<dataset>_dev_zk.jsonl.
+# Paper Figure 6: standalone aggregator benchmark (no Kafka/RocksDB/FDB).
+eval-fig6-aggregator-dev:
+	RUN_AGGREGATION=1 RUN_QUERY=0 ./scripts/eval/run_zkvm_dev_mode.sh
+
+eval-fig6-aggregator-zk: eval-zkvm-aggr-56
+
+# Paper Figure 7: standalone query benchmark (no Kafka/RocksDB/FDB).
+eval-fig7-query-dev:
+	RUN_AGGREGATION=0 RUN_QUERY=1 ./scripts/eval/run_zkvm_dev_mode.sh
+
+eval-fig7-query-zk: eval-zkvm-query-proofs
+
+# Paper Table 2: one-machine vanilla pipeline with Kafka/RocksDB/FDB, no ZK.
+eval-table2-native:
+	./scripts/eval/run_table2_native.sh
+
+# Paper Figure 5 and Table 3: distributed real-ZK pipeline.
+eval-fig5-table3-zk:
+	FIG=5 ./scripts/eval/run_figures_zk.sh
+
+# (3c) Figure 4 vehicle-emissions end-to-end in zkVM dev mode (guests execute,
+# STARK proof faked). Set KAFKA_HOST for the four-machine cluster.
 eval-dev-zk-e2e:
-	./scripts/eval/run_dev_zk_3datasets.sh
+	./scripts/eval/run_fig4_e2e.sh
+
+eval-fig4-vehicle-dev: eval-dev-zk-e2e
+
+eval-fig4-vehicle-zk:
+	RISC0_DEV_MODE=0 ./scripts/eval/run_fig4_e2e.sh
 
 # (4) Native end-to-end baseline on the real Fig.4 datasets (Google/CAIDA),
 # no zkVM proof and no data-source hash commitment. Writes

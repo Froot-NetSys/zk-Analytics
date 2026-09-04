@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Fig 7 native: offline query, vary #queried epochs 1..256. CM 8192 keys,
+# Optional Table 2 vanilla query sweep: vary #queried epochs 1..256. CM 8192 keys,
 # Hist/Hash 1024 keys, 8192 logs/epoch. Aggregate N_EPOCHS epochs once
 # (native, via Kafka->RocksDB->aggregator->FDB), then run the native query
 # (QUERY_NO_PROVE=1) over varying epoch counts; report fdb_lookup + deserialize
@@ -21,19 +21,19 @@ N_EPOCHS="${N_EPOCHS:-256}"; COUNTS="${COUNTS:-1 2 4 8 16 32 64 128 256}"
 RUN_ROOT="${RUN_ROOT:-/mydata/zk-analytics-runs}"
 mkdir -p "$RUN_ROOT"
 source "$ROOT_DIR/scripts/lib/common.sh"
-OUT="$ROOT_DIR/results/fig7_native.csv"; echo "epoch_type,query,queried_epochs,query_total_s,fdb_lookup_s,deserialize_s,query_compute_s" > "$OUT"
+OUT="$ROOT_DIR/results/table2_native_query_sweep.csv"; echo "epoch_type,query,queried_epochs,query_total_s,fdb_lookup_s,deserialize_s,query_compute_s" > "$OUT"
 cleanup_processes() {
   local p
   for p in $(pgrep -x zktelemetry-ris || true); do kill -9 "$p" 2>/dev/null || true; done
   for p in $(pgrep -x kafka-consumer || true); do kill -9 "$p" 2>/dev/null || true; done
-  pkill -9 -f mem_trace.py 2>/dev/null || true
+  pkill -9 -f '[m]em_trace.py' 2>/dev/null || true
 }
 
 # epoch_type:mode:query:keys
-for cfg in ${FIG7_CONFIGS:-samples:samples:samples_sum:1024 histogram:histogram:histogram_p90:1024 cm:cm:cm_topk:8192}; do
+for cfg in ${TABLE2_QUERY_CONFIGS:-samples:samples:samples_sum:1024 histogram:histogram:histogram_p90:1024 cm:cm:cm_topk:8192}; do
   IFS=: read -r et mode query keys <<< "$cfg"
-  echo "=== Fig7 $et (keys=$keys, ${N_EPOCHS} epochs) ==="
-  TAG="fig7_${et}"; SUB="zktel_$TAG"; TOPIC="raw_$TAG"
+  echo "=== Table 2 query sweep $et (keys=$keys, ${N_EPOCHS} epochs) ==="
+  TAG="table2_query_${et}"; SUB="zktel_$TAG"; TOPIC="raw_$TAG"
   RAW="$RUN_ROOT/${TAG}_raw"; AGG="$RUN_ROOT/${TAG}_agg"
   cleanup_processes; rm -rf "$RAW" "$AGG"; mkdir -p "$RAW"
   FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" bash scripts/setup/reset_fdb.sh "$SUB" >/dev/null 2>&1 || true
@@ -53,7 +53,7 @@ for cfg in ${FIG7_CONFIGS:-samples:samples:samples_sum:1024 histogram:histogram:
   kill -TERM "$CPID" 2>/dev/null || true
   wait "$CPID" 2>/dev/null || true
   # aggregate ALL epochs natively (no proof) -> FDB
-  echo "[fig7] aggregating $N_EPOCHS epochs ($et) ..."
+  echo "[table2-query] aggregating $N_EPOCHS epochs ($et) ..."
   E2E_TIMING=1 NO_ZKVM_PROOF=1 AGGR_PIPELINE=rocksdb RAW_ROCKSDB_PATH=$RAW AGG_ROCKSDB_PATH=$AGG AGGREGATOR_ID=0 \
     FDB_CLUSTER_FILE=$FDB_CLUSTER_FILE FDB_SUBSPACE=$SUB AGGR_IDLE_TIMEOUT_SECS=15 RAYON_NUM_THREADS=56 \
     "$LBIN/aggregator" --rocksdb --mode $mode --threads 56 > /tmp/${TAG}_agg.log 2>&1
@@ -75,7 +75,7 @@ for cfg in ${FIG7_CONFIGS:-samples:samples:samples_sum:1024 histogram:histogram:
     sleep 1
   done
   if [ "$ready" -ne 1 ]; then
-    echo "[fig7] querier failed to become ready for $et" >&2
+    echo "[table2-query] querier failed to become ready for $et" >&2
     cat "/tmp/${TAG}_q.log" >&2
     exit 1
   fi
@@ -87,16 +87,16 @@ for cfg in ${FIG7_CONFIGS:-samples:samples:samples_sum:1024 histogram:histogram:
     mg=$(grep -aoE 'merge_ms=[0-9]+' /tmp/${TAG}_q.log | tail -1 | cut -d= -f2 || true)
     pr=$(grep -aoE 'prove_ms=[0-9]+' /tmp/${TAG}_q.log | tail -1 | cut -d= -f2 || true)
     if [ -z "$db" ] && [ -z "$mg" ] && [ -z "$pr" ]; then
-      echo "[fig7] no benchmark metrics for $et at $ec epochs" >&2
+      echo "[table2-query] no benchmark metrics for $et at $ec epochs" >&2
       cat "/tmp/${TAG}_q.log" >&2
       exit 1
     fi
     db=${db:-0}; mg=${mg:-0}; pr=${pr:-0}
     tot=$(python3 -c "print(f'{($db+$mg+$pr)/1000:.6f}')")
     echo "$et,$query,$ec,$tot,$(python3 -c "print($db/1000)"),$(python3 -c "print($mg/1000)"),$(python3 -c "print($pr/1000)")" >> "$OUT"
-    echo "[fig7] $et epochs=$ec db=${db}ms merge=${mg}ms"
+    echo "[table2-query] $et epochs=$ec db=${db}ms merge=${mg}ms"
   done
   kill -TERM "$QPID" 2>/dev/null || true
   wait "$QPID" 2>/dev/null || true
 done
-echo "[fig7] -> $OUT"
+echo "[table2-query] -> $OUT"

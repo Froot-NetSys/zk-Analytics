@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Re-run the zkVM aggregation proofs at 56 threads (all cores) for the §7.2
+# Run the Figure 6 zkVM aggregation proofs at 56 threads for the paper's
 # epoch size (16,384 logs = series 128 x samples 128), 1 epoch per mode, to
 # match the paper's 56-core setup. Writes one CSV row per mode.
 #
@@ -15,7 +15,7 @@ export RAYON_NUM_THREADS=56
 export LIBCLANG_PATH="${LIBCLANG_PATH:-/usr/lib/llvm-14/lib}"
 mkdir -p target/tmp
 OUT="$ROOT_DIR/results/zkvm_aggregation_56threads.csv"
-echo "mode,threads,series,samples_per_series,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,time_max_rss_kb" > "$OUT"
+echo "mode,threads,series,samples_per_series,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,time_max_rss_kb,proof_bytes,journal_bytes" > "$OUT"
 
 echo "[zkvm56] building aggregator host (guest ELFs)..."
 cargo build -p aggregator --bin aggregator --release
@@ -35,8 +35,11 @@ for mode in histogram samples cm; do
   hwm=$(grep -oE '^proc_hwm_kb=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
   ee=$(grep -oE '^epoch_events=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
   trss=$(grep -oE 'Maximum resident set size \(kbytes\): [0-9]+' "$log" | grep -oE '[0-9]+$' | head -1 || true)
-  printf '%s,56,128,128,%s,%s,%s,%s,%s\n' \
-    "$mode" "${ee:-16384}" "${prove:-}" "${verify:-}" "${hwm:-}" "${trss:-}" >> "$OUT"
+  proof=$(grep -oE '^proof_bytes_max=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
+  journal=$(grep -oE '^journal_bytes_last=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
+  printf '%s,56,128,128,%s,%s,%s,%s,%s,%s,%s\n' \
+    "$mode" "${ee:-16384}" "${prove:-}" "${verify:-}" "${hwm:-}" "${trss:-}" \
+    "${proof:-}" "${journal:-}" >> "$OUT"
   echo "[zkvm56] $mode done: prove_ms=$prove verify_ms=$verify hwm_kb=$hwm max_rss_kb=$trss"
 done
 echo "[zkvm56] all done -> $OUT"

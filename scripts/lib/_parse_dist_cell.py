@@ -125,7 +125,10 @@ def main():
         host,prover,ntot=node_mem(os.path.join(args.logdir, f"mem_{i}.json"))
         if (host+prover)==0:  # fallback: /usr/bin/time max rss (captures prover)
             tv=max_rss_mb(os.path.join(args.logdir, f"agg_{i}_time.log"))
-            if tv: ntot=tv; prover=tv
+            if tv:
+                ntot=tv
+                if args.mode == "native": host=tv
+                else: prover=tv
         pb,jb,pn=node_proof(os.path.join(args.logdir, f"agg_{i}_time.log"))
         nodes.append(dict(i=i, comp=comp, total=total, epochs=n,
                           host=host, prover=prover, node_total=ntot,
@@ -170,6 +173,11 @@ def main():
     db,mg,pr,vf=parse_querier(args.logdir)
     db_s=(db or 0)/1000; des=(mg or 0)/1000; comp_s=(pr or 0)/1000; ver=(vf or 0)/1000
     qh,qp,_=node_mem(os.path.join(args.workdir,"mem_query.json"))
+    if (qh+qp)==0:
+        tv=max_rss_mb(os.path.join(args.logdir,"querier.log"))
+        if tv:
+            if args.mode == "native": qh=tv
+            else: qp=tv
     if args.mode == "native":
         qp = 0.0
     # Query runs ONE engine: peak = querier host + its single prover (max each),

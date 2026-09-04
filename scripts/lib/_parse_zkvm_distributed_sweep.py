@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Parse one Table 2 cell (mode x N aggregators) -> one JSONL record.
+"""Parse one standalone distributed zkVM sweep cell into JSONL.
 
 Per node the bench prints proof_bytes_max / journal_bytes_last / proc_hwm_kb.
 Memory split: host = max aggregator-process RSS, prover = max r0vm RSS (from the
@@ -69,7 +69,7 @@ def main():
              per_node_prover_mb=round(max(provers,default=0),1),
              per_node_peak_mb=round(max(totals,default=0),1))
     open(a.jsonl,"a").write(json.dumps(rec)+"\n")
-    print(f"[t2-parse] {a.mode}/{a.num_aggregators}: proof/epoch={rec['proof_size_per_epoch_kb']}KB "
+    print(f"[zkvm-sweep-parse] {a.mode}/{a.num_aggregators}: proof/epoch={rec['proof_size_per_epoch_kb']}KB "
           f"pub={rec['public_output_kb']}KB peak/node={rec['per_node_peak_mb']}MB "
           f"(host {rec['per_node_host_mb']}+prover {rec['per_node_prover_mb']})")
 

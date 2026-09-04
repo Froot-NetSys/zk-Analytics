@@ -11,7 +11,7 @@ set -uo pipefail
 # (those come from the existing measured data: bench_csv + paper Fig. 4).
 #
 # Writes:
-#   results/zkvm_dev_aggregation.csv   (synthetic, §7.2 shape)
+#   results/zkvm_dev_aggregation.csv   (Figure 6 aggregation shape)
 #   results/zkvm_dev_query.csv         (Fig.7 query shapes)
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
@@ -21,18 +21,26 @@ source "$ROOT_DIR/scripts/lib/common.sh"
 export RISC0_DEV_MODE=1
 THREADS="${THREADS:-56}"
 SEED="${SEED:-0xA66A1E}"
+RUN_AGGREGATION="${RUN_AGGREGATION:-1}"
+RUN_QUERY="${RUN_QUERY:-1}"
 
-echo "[dev] building host + querier ..."
-cargo build -p aggregator --bin aggregator --release >/dev/null
-cargo build -p querier-host --bin bench_queries --release >/dev/null
-HOST=target/release/aggregator
-BQ=target/release/bench_queries
+if [ "$RUN_AGGREGATION" = 1 ]; then
+  echo "[dev] building aggregator benchmark ..."
+  cargo build -p aggregator --bin aggregator --release >/dev/null
+  HOST=target/release/aggregator
+fi
+if [ "$RUN_QUERY" = 1 ]; then
+  echo "[dev] building query benchmark ..."
+  cargo build -p querier-host --bin bench_queries --release >/dev/null
+  BQ=target/release/bench_queries
+fi
 
-# -------- Aggregation (dev mode): one local aggregator, 8 x 16,384-log epochs -
+# -------- Aggregation (dev mode): Figure 6, one 16,384-log epoch ------------
+if [ "$RUN_AGGREGATION" = 1 ]; then
 AGG_OUT="$ROOT_DIR/results/zkvm_dev_aggregation.csv"
 echo "mode,num_aggregators,epochs,epoch_events,dev_exec_ms,verify_ms,dev_rss_kb" > "$AGG_OUT"
 for mode in samples histogram cm; do
-  epochs=8
+  epochs=1
   log="$ROOT_DIR/results/_dev_agg_${mode}_e${epochs}.log"
   echo "[dev] aggregation mode=$mode aggregator=1 epochs=$epochs (RISC0_DEV_MODE=1) ..."
   /usr/bin/time -v env RISC0_DEV_MODE=1 RAYON_NUM_THREADS="$THREADS" \
@@ -47,8 +55,10 @@ for mode in samples histogram cm; do
   printf '%s,1,%s,%s,%s,%s,%s\n' "$mode" "$epochs" "${ee:-16384}" "${pm:-}" "${vm:-}" "${rss:-}" >> "$AGG_OUT"
   echo "  dev_exec_ms=${pm:-?} verify_ms=${vm:-?} rss_kb=${rss:-?}"
 done
+fi
 
 # -------- Query (dev mode): Fig.7 shapes, epochs 1..16 -----------------------
+if [ "$RUN_QUERY" = 1 ]; then
 Q_OUT="$ROOT_DIR/results/zkvm_dev_query.csv"
 echo "epoch_type,query,num_epochs,keys,dev_exec_ms,verify_ms,proof_bytes" > "$Q_OUT"
 map_query() {
@@ -80,7 +90,12 @@ run_q() {  # label keys events_per_key skips...
 run_q samples   1024 8 --skip-histogram --skip-cm --skip-raw --skip-samples-sum-key
 run_q histogram 1024 8 --skip-samples --skip-cm --skip-raw --skip-histogram-bucket --skip-histogram-all
 run_q cm        8192 1 --skip-samples --skip-histogram --skip-raw
+fi
 
-echo "[dev] done. -> $AGG_OUT , $Q_OUT"
-echo "=== aggregation ==="; column -t -s, "$AGG_OUT"
-echo "=== query ==="; column -t -s, "$Q_OUT"
+echo "[dev] done."
+if [ "$RUN_AGGREGATION" = 1 ]; then
+  echo "=== aggregation ==="; column -t -s, "$AGG_OUT"
+fi
+if [ "$RUN_QUERY" = 1 ]; then
+  echo "=== query ==="; column -t -s, "$Q_OUT"
+fi

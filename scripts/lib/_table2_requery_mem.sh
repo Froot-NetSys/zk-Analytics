@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -uo pipefail
-# Fig 7 native QUERY memory: re-query the already-aggregated FDB subspaces
-# (zktel_fig7_{samples,histogram,cm}) and capture querier peak RSS per epoch
+# Optional Table 2 native-query memory pass: re-query the already-aggregated
+# FDB subspaces (zktel_table2_query_{samples,histogram,cm}) and capture peak RSS
 # count via mem_trace.py. Native (QUERY_NO_PROVE=1) -> no prover. Also re-emits
 # the timing so the output CSV carries time + memory together.
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT_DIR"
 B="$ROOT_DIR/target/release"; FC="$HOME/zktel-dist/fdb.cluster"
 export SAMPLES_HT_BUCKETS=64 SAMPLES_HT_BUCKET_CAP=4 HISTOGRAM_SLOTS=32 CM_TOPK_SLOTS=100
 COUNTS="${COUNTS:-1 2 4 8 16 32 64 128 256}"; QPORT="${QUERIER_PORT:-8123}"
-OUT="$ROOT_DIR/results/fig7_native.csv"
+OUT="$ROOT_DIR/results/table2_native_query_sweep.csv"
 echo "epoch_type,query,queried_epochs,query_total_s,fdb_lookup_s,deserialize_s,query_compute_s,query_rss_mb,query_prover_rss_mb" > "$OUT"
 peak_rss(){ python3 - "$1" <<'PY'
 import sys,json
@@ -21,9 +21,9 @@ except Exception: print("0.0")
 PY
 }
 for cfg in samples:samples_sum cm:cm_topk histogram:histogram_p90; do
-  IFS=: read -r et query <<< "$cfg"; SUB="zktel_fig7_${et}"
+  IFS=: read -r et query <<< "$cfg"; SUB="zktel_table2_query_${et}"
   for ec in $COUNTS; do
-    pkill -9 -x querier 2>/dev/null; pkill -9 -f mem_trace.py 2>/dev/null; sleep 1
+    pkill -9 -x querier 2>/dev/null; pkill -9 -f '[m]em_trace.py' 2>/dev/null; sleep 1
     QLOG=/tmp/rqm_${et}_${ec}.log; MJSON=/tmp/rqm_${et}_${ec}.json
     QUERY_NO_PROVE=1 BENCH_PRINT=1 FDB_CLUSTER_FILE=$FC FDB_SUBSPACE=$SUB \
       HTTP_LISTEN=0.0.0.0:$QPORT "$B/querier" > "$QLOG" 2>&1 & QPID=$!
@@ -42,5 +42,5 @@ for cfg in samples:samples_sum cm:cm_topk histogram:histogram_p90; do
     echo "[rqm] $et ec=$ec db=${db}ms merge=${mg}ms rss=${rss}MB"
   done
 done
-pkill -9 -x querier 2>/dev/null; pkill -9 -f mem_trace.py 2>/dev/null
+pkill -9 -x querier 2>/dev/null; pkill -9 -f '[m]em_trace.py' 2>/dev/null
 echo "[rqm] -> $OUT"

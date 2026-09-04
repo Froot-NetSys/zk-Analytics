@@ -6,6 +6,8 @@
 #   - kafka-consumer (Kafka consumer aggregators)
 #   - kafka-producer (Kafka event producer)
 #   - aggregator (ZK aggregator host)
+#   - querier
+#   - mem_trace.py
 #
 # Usage:
 #   ./scripts/util/kill_bench_processes.sh                    # Kill on localhost only
@@ -37,18 +39,22 @@ PROCESS_PATTERNS=(
     "kafka-consumer"
     "kafka-producer"
     "aggregator"
+    "zktelemetry-ris"
+    "querier"
 )
 
 kill_local_processes() {
     log_info "Killing benchmark processes on localhost..."
 
     for pattern in "${PROCESS_PATTERNS[@]}"; do
-        local count=$(pgrep -f "$pattern" 2>/dev/null | wc -l)
+        local count
+        count=$(pgrep -x "$pattern" 2>/dev/null | wc -l || true)
         if [[ $count -gt 0 ]]; then
             log_info "  Killing $count process(es) matching '$pattern'"
-            pkill -9 -f "$pattern" 2>/dev/null || true
+            pkill -9 -x "$pattern" 2>/dev/null || true
         fi
     done
+    pkill -9 -f '[m]em_trace.py' 2>/dev/null || true
 
     log_info "Local cleanup complete"
 }
@@ -63,9 +69,12 @@ kill_remote_processes() {
             kill_local_processes
         else
             log_info "  Killing processes on $machine..."
-            # Build pattern for pkill -f with alternation
-            local pattern_regex=$(IFS='|'; echo "${PROCESS_PATTERNS[*]}")
-            ssh "${SSH_USER}@${machine}" "pkill -9 -f '$pattern_regex'" 2>/dev/null || true
+            local names
+            names=$(printf '%s ' "${PROCESS_PATTERNS[@]}")
+            timeout 8 ssh -n -o BatchMode=yes -o ConnectTimeout=5 \
+                "${SSH_USER}@${machine}" \
+                "for name in $names; do pkill -9 -x \"\$name\" 2>/dev/null || true; done; pkill -9 -f '[m]em_trace.py' 2>/dev/null || true" \
+                2>/dev/null || true
         fi
     done
 

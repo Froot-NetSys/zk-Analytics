@@ -44,7 +44,7 @@
 //! - `--series N`: Number of distinct keys per source (default: 1000)
 //! - `--samples-per-series N`: Samples per key (used with --series to compute total events)
 //! - `--source-id N`: Source identifier for synthetic data (default: 0)
-//! - `--key-cardinality N`: Maximum number of unique keys per source (default: 1000)
+//! - `--key-cardinality N`: Exact number of unique keys per source (default: 1000)
 //! - `--value-mod N`: Value modulo for synthetic events (default: 10000)
 //! - `--seed N`: Random seed (default: 0x5EED)
 //! - `--rate N`: Events per second rate limit (0 = unlimited)
@@ -87,6 +87,10 @@ fn env_u64(name: &str, default: u64) -> u64 {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
+}
+
+fn synthetic_key_index(event_index: u64, key_cardinality: u64) -> u64 {
+    event_index % key_cardinality
 }
 
 #[tokio::main]
@@ -192,22 +196,26 @@ async fn main() -> Result<()> {
     // Create event source based on BENCH_INPUT
     match bench_input.as_str() {
         "synthetic" => {
+            anyhow::ensure!(
+                total_events == 0 || key_cardinality <= total_events,
+                "--key-cardinality ({key_cardinality}) cannot exceed --events ({total_events}) when exact cardinality is required"
+            );
             eprintln!(
                 "[kafka-producer] synthetic mode: keys_per_source={} value_mod={}",
                 key_cardinality, value_mod
             );
 
             // Synthetic mode: generate events with source_id in key
-            let cbs = config.commit_batch_size.max(1);
-            let mut current_key: u64 = 0;
-            let mut events_for_current_key: u64 = 0;
-
             while events_sent < total_events {
                 let remaining = total_events - events_sent;
                 let batch_count = remaining.min(events_per_send);
 
                 let mut batch: Vec<SimpleEvent> = Vec::with_capacity(batch_count as usize);
                 for _ in 0..batch_count {
+                    let current_key = synthetic_key_index(
+                        events_sent + batch.len() as u64,
+                        key_cardinality,
+                    );
                     // Generate 15-byte key_id unique per source
                     let mut key_id = [0u8; 15];
                     key_id[3..7].copy_from_slice(&source_id.to_be_bytes());
@@ -218,12 +226,6 @@ async fn main() -> Result<()> {
                         key_id,
                         value: rng.gen::<u32>() % value_mod,
                     });
-
-                    events_for_current_key += 1;
-                    if events_for_current_key >= cbs {
-                        events_for_current_key = 0;
-                        current_key = (current_key + 1) % key_cardinality;
-                    }
                 }
 
                 producer.send_batch(batch).await?;
@@ -673,5 +675,22 @@ async fn apply_rate_limit(
             *last_rate_check = std::time::Instant::now();
             *events_since_check = 0;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::synthetic_key_index;
+    use std::collections::HashSet;
+
+    #[test]
+    fn synthetic_cardinality_is_exact_and_batch_independent() {
+        let keys: HashSet<_> = (0..16_384)
+            .map(|event_index| synthetic_key_index(event_index, 4_096))
+            .collect();
+        assert_eq!(keys.len(), 4_096);
+        assert_eq!(synthetic_key_index(7, 4_096), 7);
+        assert_eq!(synthetic_key_index(8, 4_096), 8);
+        assert_eq!(synthetic_key_index(4_096, 4_096), 0);
     }
 }

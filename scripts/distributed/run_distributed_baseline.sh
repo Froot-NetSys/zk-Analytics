@@ -127,9 +127,21 @@ spawn_node() { local node="$1"; shift; local cmd="$*";
 ALLNODES="$NODES_STR"
 # PID-based kill is reliable; pkill -x/-9 on r0vm races (it survives). r0vm
 # must be killed AFTER the aggregator (which would respawn it).
-KILLPATS='for p in $(pgrep -x zktelemetry-ris); do kill -9 $p 2>/dev/null; done; for p in $(pgrep -x kafka-consumer); do kill -9 $p 2>/dev/null; done; pkill -9 -f mem_trace.py 2>/dev/null; sleep 1; for p in $(pgrep -x r0vm); do kill -9 $p 2>/dev/null; done'
-cleanup() { for n in $ALLNODES; do on_node "$n" "$KILLPATS" >/dev/null 2>&1 || true; done; }
-trap cleanup EXIT INT TERM
+KILLPATS='for name in zktelemetry-ris aggregator kafka-consumer kafka-producer querier r0vm; do pkill -9 -x "$name" 2>/dev/null || true; done; pkill -9 -f "[m]em_trace.py" 2>/dev/null || true'
+cleanup() {
+  for n in $ALLNODES; do
+    if [[ "$n" == "$COORD" || "$n" == "node0" ]]; then
+      timeout 5 bash -c "$KILLPATS" >/dev/null 2>&1 || true
+    else
+      timeout 8 ssh -n -o BatchMode=yes -o ConnectTimeout=5 "$n" "$KILLPATS" \
+        >/dev/null 2>&1 || true
+    fi
+  done
+}
+on_signal() { local code="$1"; trap - EXIT INT TERM; cleanup; exit "$code"; }
+trap cleanup EXIT
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
 
 # Hard pre-run nuke: kill everything on ALL nodes and WAIT until every node is
 # idle (no r0vm / aggregator) so each experiment starts on a clean machine.
@@ -194,6 +206,7 @@ fi
 # TOTAL_LOGS-based check compared events to messages and never converged).
 # Break when every group has consumed everything (lag==0) and >0 messages seen.
 echo "[dist] waiting for Kafka drain (consumer lag -> 0) ..."
+drained=0
 for ((t=0;t<300;t+=3)); do
   LAG=0; CUR=0
   for ((i=0;i<NUM_AGGREGATORS;i++)); do
@@ -201,9 +214,17 @@ for ((t=0;t<300;t+=3)); do
       | awk 'NR>1 && $6 ~ /^[0-9]+$/ {lag+=$6} NR>1 && $4 ~ /^[0-9]+$/ {cur+=$4} END{print lag+0, cur+0}')
     LAG=$((LAG+${l:-0})); CUR=$((CUR+${c:-0}))
   done
-  [ "${CUR:-0}" -gt 0 ] && [ "${LAG:-0}" -eq 0 ] && { echo "[dist] drained: lag=0 consumed_msgs=$CUR"; break; }
+  [ "${CUR:-0}" -gt 0 ] && [ "${LAG:-0}" -eq 0 ] && {
+    echo "[dist] drained: lag=0 consumed_msgs=$CUR"
+    drained=1
+    break
+  }
   sleep 3
 done
+if [ "$drained" -ne 1 ]; then
+  echo "[dist] ERROR: Kafka did not drain within 300 seconds (lag=${LAG:-unknown}, consumed_msgs=${CUR:-unknown})" >&2
+  exit 3
+fi
 sleep 2
 for ((i=0;i<NUM_AGGREGATORS;i++)); do on_node "${NODES[i]}" "pkill -TERM -f 'kafka-consumer' 2>/dev/null" >/dev/null 2>&1; done
 sleep 4
@@ -219,18 +240,32 @@ for ((i=0;i<NUM_AGGREGATORS;i++)); do
   BDIR="$(node_bin "${NODES[i]}")"
   MEMTRACE="$(node_memtrace "${NODES[i]}")"
   spawn_node "${NODES[i]}" "rm -f ${ALOG}_$i.DONE; \
+    rm -f ${AMEM}_$i.csv ${AMEM}_$i.json; \
     nohup python3 $MEMTRACE --out ${AMEM}_$i.csv --summary ${AMEM}_$i.json --match aggregator --match r0vm --interval $MEM_INTERVAL > /dev/null 2>&1 & \
+    for attempt in \$(seq 1 100); do test -s ${AMEM}_$i.csv && break; sleep 0.01; done; \
     env $REMOTE_ENV E2E_TIMING=1 RISC0_DEV_MODE=$RISC0_DEV_MODE NO_ZKVM_PROOF=$NO_ZKVM_PROOF RAW_ROCKSDB_PATH=${RAWP}_$i AGG_ROCKSDB_PATH=${AGGP}_$i AGGREGATOR_ID=$i FDB_CLUSTER_FILE=$FDB_CLUSTER_FILE FDB_SUBSPACE=$FDB_SUBSPACE AGGR_IDLE_TIMEOUT_SECS=$AGGR_IDLE_TIMEOUT_SECS AGGR_PIPELINE=rocksdb RAYON_NUM_THREADS=56 \
     /usr/bin/time -v $BDIR/aggregator --rocksdb --mode $AGG_MODE --threads 56 > ${ALOG}_$i.log 2> ${ALOG}_${i}_time.log; \
-    pkill -INT -f mem_trace.py 2>/dev/null; sleep 3; touch ${ALOG}_$i.DONE"
+    pkill -INT -f '[m]em_trace.py' 2>/dev/null; sleep 3; touch ${ALOG}_$i.DONE"
 done
 # Poll each node for its DONE marker (cheap test -f over SSH; no long-held channel).
-AGG_MAX_WAIT="${AGG_MAX_WAIT:-20000}"
+if [ "$MODE" = native ]; then
+  AGG_MAX_WAIT="${AGG_MAX_WAIT:-600}"
+else
+  AGG_MAX_WAIT="${AGG_MAX_WAIT:-20000}"
+fi
 for ((i=0;i<NUM_AGGREGATORS;i++)); do
+  node_done=0
   for ((t=0;t<AGG_MAX_WAIT;t+=10)); do
-    on_node "${NODES[i]}" "test -f ${ALOG}_$i.DONE" 2>/dev/null && break
+    if on_node "${NODES[i]}" "test -f ${ALOG}_$i.DONE" 2>/dev/null; then
+      node_done=1
+      break
+    fi
     sleep 10
   done
+  if [ "$node_done" -ne 1 ]; then
+    echo "[dist] ERROR: aggregator $i did not finish within ${AGG_MAX_WAIT} seconds" >&2
+    exit 4
+  fi
 done
 AGG_END=$(date +%s.%N)
 echo "[dist] all aggregators done; collecting ..."

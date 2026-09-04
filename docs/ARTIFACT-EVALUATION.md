@@ -14,8 +14,10 @@ Analytics."* More precisely, it contains:
 
 By running the experiments, reviewers can reproduce or validate the results in:
 
-- **Figure 4 and Tables 1–2:** end-to-end performance on Google cluster, CAIDA,
-  and vehicle-emissions workloads;
+- **Figure 4:** end-to-end performance, with the bundled vehicle-emissions
+  workload provided as the initial reproduction path;
+- **Table 2:** vanilla non-ZK pipeline costs with Kafka, RocksDB, and
+  FoundationDB;
 - **Figure 5 and Table 3:** distributed aggregation scalability;
 - **Figure 6:** single-machine aggregation time, proof verification, proof size,
   and memory;
@@ -50,8 +52,8 @@ immutable release/archive.
   Xeon Gold 6142 CPUs (32 physical cores total).
 - **Distributed experiments:** fully validating aggregator scaling in Figure 5
   and Table 3 requires eight SSH-reachable CloudLab `c6420` machines (or
-  equivalent), plus Kafka and FoundationDB. The distributed Figure 4
-  experiments use the same cluster.
+  equivalent), plus Kafka and FoundationDB. The bundled vehicle-emissions
+  Figure 4 run uses four of these machines.
 
 ## Comments for the AEC
 
@@ -231,109 +233,98 @@ serial_ns_per_event=<measured value>
 Convert nanoseconds per event to events per second and compare with the §7.2
 range of 1.6–6.7 million commitments/s.
 
-#### Figure 6 — single-machine native aggregation
+#### Table 2 — vanilla non-ZK pipeline
 
 This run needs local Kafka and FoundationDB and takes approximately 30 minutes
-on the paper machine.
+on the paper machine. It runs one local aggregator over one 16,384-event epoch
+for every aggregation mode and requested key cardinality.
 
 ```bash
-KAFKA_HOST=localhost FIG=6 ./scripts/eval/run_figures_native.sh
+KAFKA_HOST=localhost make eval-table2-native
 ```
 
-Expected output: `results/fig6_native.csv`. It contains one row for every
-`var` (number of keys) and aggregation `mode`, with the following header:
+Expected output: `results/table2_native.csv`. The default sweep directly measures
+15 rows: three aggregation modes times exact key cardinalities 256, 512, 1024,
+2048, and 4096. `var` is the number of distinct keys actually generated and
+processed; it is not merely a row label. The CSV has the following header:
 
 ```text
 var,mode,agg_total_s,kafka_recv_s,rocksdb_raw_insert_s,rocksdb_raw_read_s,aggr_compute_s,fdb_write_s,query_total_s,fdb_lookup_s,deserialize_s,query_compute_s,agg_per_node_host_rss_mb,agg_cluster_host_rss_mb,agg_prover_rss_mb,query_rss_mb,query_prover_rss_mb
 ```
 
-Compare the native timing and memory columns with the native series in Figure
-6. A 2026-09-03 run on a 32-core/64-thread Xeon Gold 6142 produced all 15
-rows. Representative rows (seconds and MB) were:
+Compare the timing and memory columns with the vanilla (non-ZK) baseline in
+Table 2. `agg_total_s` covers the aggregation stage only: reading the epoch from
+RocksDB, native aggregation computation, and the FoundationDB write. Kafka
+receipt and RocksDB insertion are transmission/ingestion costs, are reported
+separately, and are intentionally not added to `agg_total_s`.
 
-```text
-var,mode,agg_total_s,aggr_compute_s,fdb_write_s,agg_cluster_host_rss_mb,query_total_s
-256,samples,0.062357,0.028523,0.012718,32.73,0.006
-1024,histogram,0.072858,0.031743,0.020035,33.88,0.000
-4096,cm,0.098553,0.043971,0.034385,32.57,0.000
-```
+For these short native runs, the runner samples process RSS every 10 ms and
+starts the aggregator only after the tracer is ready. GNU `time` maximum RSS is
+used as a fallback if polling still misses the process. Sub-millisecond query
+components may round to `0.0`; an aggregation row with `agg_total_s=0` is
+invalid and stops the runner.
 
-Sub-millisecond query components round to `0.0` in this CSV. An aggregation
-row with `agg_total_s=0` is invalid; the runner now stops instead of silently
-accepting incomplete metrics.
-
-#### Figure 6 — single-machine ZK aggregation
-
-This run generates real proofs. It requires AVX-512 and many cores and takes
-hours (roughly 28 minutes for histogram, 86 minutes for samples, and 185 minutes
-for Count-Min on the paper machine).
+Press Ctrl-C once to terminate the active cell and its local benchmark
+processes. If the shell or machine was interrupted abnormally, clean up any
+remaining benchmark processes before retrying:
 
 ```bash
-KAFKA_HOST=localhost FIG=6 SYNTH_KEYS=1024 \
-  ./scripts/eval/run_figures_zk.sh
+make eval-kill
 ```
 
-Expected output: `results/fig6_zk.csv`, with one row for each of `histogram`,
-`samples`, and `cm`. Its header is:
+#### Figure 6 — zkVM aggregator benchmark
 
-```text
-var,mode,agg_total_s,prove_s,verify_s,kafka_recv_s,rocksdb_raw_insert_s,fdb_write_s,agg_host_rss_mb,agg_prover_rss_mb,agg_cluster_rss_mb,proof_bytes,journal_bytes,query_total_s,query_prove_s,query_verify_s,query_fdb_lookup_s,query_host_rss_mb,query_prover_rss_mb
-```
-
-Compare `prove_s`, `verify_s`, `proof_bytes`, and the RSS columns with Figure 6.
-Do not use the paper-machine estimates above as watchdog timeouts: proving is
-hardware- and RISC Zero-version-dependent. For example, the same Xeon Gold
-6142 node with RISC Zero 3.0.6 produced this successfully verified histogram
-row on 2026-09-04:
-
-```text
-var,mode,agg_total_s,prove_s,verify_s,agg_cluster_rss_mb,proof_bytes,journal_bytes,query_total_s,query_prove_s,query_verify_s
-1024,histogram,7567.390,7567.235,0.034,9493.1,229544,793,960.269,960.233,0.034
-```
-
-#### Figure 7 — native query scaling
-
-This run uses local Kafka and FoundationDB and takes approximately 30 minutes.
+Figure 6 is the standalone aggregator benchmark. It uses synthetic epochs and
+does not include Kafka, RocksDB, FoundationDB, or network transmission. First,
+the following inexpensive dev-mode command executes each aggregation guest for
+one 16,384-event epoch:
 
 ```bash
-KAFKA_HOST=localhost ./scripts/eval/run_fig7_native.sh
+make eval-fig6-aggregator-dev
 ```
 
-Expected output: `results/fig7_native.csv`. It contains query measurements for
-increasing `queried_epochs` and has this header:
+Expected output: `results/zkvm_dev_aggregation.csv`. These values validate guest
+execution only; they are not proof-generation, proof-verification, proof-size,
+or end-to-end measurements.
 
-```text
-epoch_type,query,queried_epochs,query_total_s,fdb_lookup_s,deserialize_s,query_compute_s
-```
-
-Compare `query_total_s` and its component columns with the native curves in
-Figure 7. The Xeon Gold 6142 reference run above produced all 27 rows. The
-endpoints were:
-
-```text
-epoch_type,query,queried_epochs,query_total_s,fdb_lookup_s,deserialize_s,query_compute_s
-samples,samples_sum,1,0.344000,0.344,0.0,0.0
-samples,samples_sum,256,0.327000,0.327,0.0,0.0
-histogram,histogram_p90,1,0.167000,0.167,0.0,0.0
-histogram,histogram_p90,256,0.229000,0.175,0.054,0.0
-cm,cm_topk,1,0.044000,0.043,0.001,0.0
-cm,cm_topk,256,0.071000,0.059,0.012,0.0
-```
-
-The histogram and CM merge components increase with the number of queried
-epochs; the samples query is dominated by a roughly constant FDB lookup in
-this run. Millisecond instrumentation rounds smaller components to `0.0`.
-
-#### Figure 7 — ZK query proofs
-
-This reduced 1/2/4-epoch run produces real proofs, requires AVX-512, and takes
-approximately 1–2 hours on the paper machine.
+For measured cryptographic proofs, run:
 
 ```bash
-make eval-zkvm-query-proofs
+make eval-fig6-aggregator-zk
 ```
 
-Expected output: `results/zkvm_query_proofs.csv`, containing:
+This requires AVX-512 and many cores and takes hours. Expected output:
+`results/zkvm_aggregation_56threads.csv`, with one directly measured row for
+each of `histogram`, `samples`, and `cm`:
+
+```text
+mode,threads,series,samples_per_series,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,time_max_rss_kb,proof_bytes,journal_bytes
+```
+
+Compare proving time, verification time, and peak RSS with Figure 6. The command
+runs the aggregator benchmark directly; storage and transmission costs belong
+to Table 2 and the end-to-end experiments, not this figure.
+
+#### Figure 7 — zkVM query benchmark
+
+Figure 7 is the standalone query benchmark over in-memory synthetic epochs. It
+does not require Kafka, RocksDB, or FoundationDB. Run the dev-mode shapes first:
+
+```bash
+make eval-fig7-query-dev
+```
+
+Expected output: `results/zkvm_dev_query.csv`, with 1, 2, 4, 8, and 16 queried
+epochs. As above, dev-mode timing and receipt sizes are functional diagnostics,
+not cryptographic performance results.
+
+For real proofs at the reviewer-feasible 1/2/4-epoch points, run:
+
+```bash
+make eval-fig7-query-zk
+```
+
+Expected output: `results/zkvm_query_proofs.csv`:
 
 ```text
 epoch_type,query,num_epochs,events_per_epoch,keys,prove_ms,verify_ms,max_rss_kb,proof_bytes
@@ -358,100 +349,49 @@ claim; a complete CSV must contain all 15 rows.
 #### Figure 5 and Table 3 — distributed aggregation
 
 These experiments require up to eight SSH-reachable machines plus Kafka and
-FoundationDB. Run the native sweep first:
+FoundationDB. These are distributed zk-Analytics experiments, not extrapolated
+single-machine rows and not a native scaling sweep. Run on `node0`, with
+passwordless SSH to `node1` through `node7`:
 
 ```bash
-KAFKA_HOST=<coordinator-private-address> FIG=5 \
-  ./scripts/eval/run_figures_native.sh
+KAFKA_HOST=<coordinator-private-address> make eval-fig5-table3-zk
 ```
 
-Run this on `node0`, with passwordless SSH to `node1` through `node7` and the
-same hostnames used by the script. `KAFKA_HOST` must be reachable from every
-worker; do not use `localhost` for an eight-node run. The driver now checks the
-broker and every worker before cleaning state, and exits with a diagnostic
-instead of waiting indefinitely for Kafka drain.
+Expected output: `results/fig5_zk.csv`. By default it directly measures all 12
+combinations of three aggregation modes and 1, 2, 4, or 8 aggregators. Override
+`FIG5_SPECS` only for a reduced smoke test. Every row is produced by the
+requested number of real machines.
+The CSV reports aggregation prove/verify time, Kafka/RocksDB/FDB components,
+host and prover RSS, proof size, and query costs. Compare aggregation time and
+speedup with Figure 5, and the component measurements with Table 3. Expect this
+run to take many hours.
 
-To smoke-test only the coordinator before reserving all eight nodes, run:
+#### Figure 4 — vehicle-emissions end-to-end pipeline
+
+Figure 4 measures the end-to-end zk-Analytics pipeline. The initial artifact
+path uses only the bundled vehicle-emissions dataset and four real aggregators.
+It includes commitment generation, Kafka, RocksDB, aggregation, FoundationDB,
+and the query. From `node0`, with three SSH-reachable workers, run the functional
+dev-mode version:
 
 ```bash
-KAFKA_HOST=localhost FIG=5 FIG5_SPECS=samples:1 \
-  ./scripts/eval/run_figures_native.sh
+KAFKA_HOST=<coordinator-private-address> make eval-fig4-vehicle-dev
 ```
 
-Expected output: `results/fig5_native.csv`, with rows for 1, 2, 4, and 8
-aggregators for each aggregation mode. It uses the same native CSV header shown
-for Figure 6; here `var` is the number of aggregators.
-
-Then run the real-proof subset:
+Expected output: `results/e2e_dev_zk/vehicle_dev_zk.jsonl`. This validates the
+complete distributed path but does not produce a cryptographic proof. For the
+real-ZK run on the same topology:
 
 ```bash
-KAFKA_HOST=<coordinator-private-address> FIG=5 \
-  ./scripts/eval/run_figures_zk.sh
+KAFKA_HOST=<coordinator-private-address> make eval-fig4-vehicle-zk
 ```
 
-Expected output: `results/fig5_zk.csv`. By default it contains
-`histogram:1`, `histogram:8`, `samples:8`, and `cm:8`; override `FIG5_SPECS` to
-run more cells. It uses the same ZK CSV header shown for Figure 6. Compare
-aggregation time and speedup with Figure 5, and the component measurements with
-Table 3. Expect this run to take many hours.
+Expected output: `results/e2e_real_zk/vehicle_real_zk.jsonl`. Only this second
+command may be used for proof-generation and proof-verification performance.
 
-#### Figure 4 and Tables 1–2 — native end-to-end workloads
-
-Download the Google data and prepare the access-controlled CAIDA trace as
-described under Datasets. Then run:
-
-```bash
-PCAP=/path/to/trace.pcap.gz ./scripts/setup/prep_caida.sh
-make eval-non-zk-e2e
-```
-
-Expected output: `results/non_zk_e2e_baseline.csv`. A dataset is skipped with an
-explicit `[e2e] SKIP ...` message if its input is unavailable. Successful rows
-have this header:
-
-```text
-dataset,mode,bench_input,epochs,epoch_logs,total_logs,native_ms_total,native_rss_mb,zkvm_dev_exec_ms,zk_agg_proofgen_s,zk_query_proofgen_s,slowdown_native_vs_proof,zk_provenance
-```
-
-Compare the native columns with Figure 4 and the non-ZK columns in Table 2.
-Without the two external datasets, the Xeon Gold 6142 synthetic control run
-produced:
-
-```text
-dataset,mode,native_ms_total,native_rss_mb,zkvm_dev_exec_ms
-synthetic,samples,64.923,24.6,40980
-synthetic,histogram,65.456,18.9,42774
-synthetic,cm,152.678,18.9,86750
-```
-
-Synthetic rows have no paper real-proof anchor, so
-`slowdown_native_vs_proof` is empty and the terminal displays `n/a`. They must
-not be interpreted as a `0x` slowdown claim. Google and CAIDA are explicitly
-reported as `SKIP` until their external files are installed.
-Depending on dataset size, this takes approximately 1–4 hours.
-
-#### Figure 4 / Table 2 — 56-thread ZK aggregation anchor
-
-This single-node real-proof run requires AVX-512 and 56 cores. Count-Min takes
-approximately 3.5 hours on the paper machine.
-
-```bash
-make eval-zkvm-aggr-56
-```
-
-Expected output: `results/zkvm_aggregation_56threads.csv`, with one row for each
-aggregation mode and this header:
-
-```text
-mode,threads,series,samples_per_series,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,time_max_rss_kb
-```
-
-Use `prove_ms_total`, `verify_ms_total`, and the RSS columns to compare with the
-ZK aggregation values in Figure 4 and Table 2.
-
-> **Kafka/FDB endpoints.** Every row that drives the real pipeline (the Fig 6/7
-> native runs and all distributed cells go through
-> `run_distributed_baseline.sh`) connects to Kafka and FoundationDB. The shipped
+> **Kafka/FDB endpoints.** Table 2, Figure 4, Figure 5, and Table 3 use the
+> storage-backed `run_distributed_baseline.sh` pipeline, which connects to Kafka
+> and FoundationDB. The shipped
 > scripts use RFC 5737 **placeholder IPs** (e.g. `192.0.2.1`), so point them at
 > your setup first: after `setup_local_e2e.sh --all` use `KAFKA_HOST=localhost`
 > (single machine), or set `KAFKA_HOST`/`KAFKA_BROKERS` + `FDB_CLUSTER_FILE` and
@@ -473,22 +413,22 @@ When measured ZK inputs are present, it also creates
 These need multiple machines reachable over SSH. Copy
 `scripts/distributed_e2e_config.example.sh`, set `SSH_USER`, the node IPs
 (`scripts/ip_defaults.sh`), and `KAFKA_BROKERS`/`FDB_*`, then drive the runs with
-`scripts/distributed/run_distributed_baseline.sh` / `run_table2_sweep.sh`. See
-`docs/DISTRIBUTED_SETUP.md` and `docs/DISTRIBUTED_E2E_GUIDE.md`. On a
-single machine you can still reproduce the **native** distributed cells and all
-single-machine ZK results above.
+`scripts/distributed/run_distributed_baseline.sh`. See
+`docs/DISTRIBUTED_SETUP.md` and `docs/DISTRIBUTED_E2E_GUIDE.md`. A single
+machine can run Table 2 and the standalone Figure 6/7 benchmarks, but cannot
+validate Figure 4 or Figure 5/Table 3 distributed behavior.
 
 ## Cost-limited claims (read before reproducing)
 
 Some paper points are too expensive to re-run in full and are validated by
 proxy; this is stated so reviewers know what to expect:
 
-- **Fig 4 ZK end-to-end** and **Fig 7 ZK at ≥ 16 queried epochs** would take days
-  of proving per dataset. They are reproduced at reduced scale (dev-mode for the
+- **Fig 4 ZK end-to-end** and **Fig 7 ZK at ≥ 16 queried epochs** can take days
+  to prove. They are reproduced at reduced scale (dev mode for the
   pipeline; `eval-zkvm-aggr-56` and 1/2/4-epoch query proofs for the proving
   cost), and the larger points are compared against the paper's reported values.
-- **Verification cost** (the cheap, reviewer-friendly claim) reproduces fully and
-  quickly at every scale.
+- **Verification cost** is directly measured for every real proof generated by
+  the selected real-ZK commands.
 
 ## Outputs and comparison
 
