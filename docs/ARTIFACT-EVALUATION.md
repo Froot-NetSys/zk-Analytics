@@ -46,9 +46,11 @@ evaluation runs on a single x86-64 machine with 8 GB RAM and 10 GB free disk.
 Efficient real proof generation requires AVX-512, at least 64 GB RAM, and many
 CPU cores. The paper used CloudLab `c6420` machines, each with two 16-core
 Intel Xeon Gold 6142 CPUs (32 physical cores total).
-Distributed Figure 4/5 and Table 3 experiments require up to eight machines
-reachable over SSH, plus Kafka and FoundationDB. Native and dev-mode checks do
-not require this cluster.
+Fully validating the distributed scaling of aggregators in Figure 5 and Table 3
+requires eight SSH-reachable CloudLab `c6420` machines (or equivalent), plus
+Kafka and FoundationDB; the distributed Figure 4 experiments use the same
+cluster. Native and dev-mode checks run on one machine, but do not validate
+distributed scaling.
 
 ## Comments for the AEC
 
