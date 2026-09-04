@@ -148,8 +148,12 @@ sudo apt-get update
 sudo apt-get install -y build-essential clang libclang-dev cmake \
   libssl-dev pkg-config python3 python3-matplotlib
 
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+  sh -s -- -y
+source "$HOME/.cargo/env"
+
 curl -fsSL https://risczero.com/install | bash
-source "$HOME/.bashrc"
+export PATH="$HOME/.risc0/bin:$PATH"
 rzup install
 ```
 
@@ -162,8 +166,10 @@ rzup show
 r0vm --version
 ```
 
-All four commands must succeed. If `rzup` is not found immediately after the
-installer finishes, open a new shell or run `source "$HOME/.bashrc"` again.
+All four commands must succeed. The RISC Zero installer requires `rustc`, so the
+Rust installation above must come first on a clean machine. If `cargo` or `rzup`
+is not found immediately after installation, source `$HOME/.cargo/env` and add
+`$HOME/.risc0/bin` to `PATH` as shown above (or open a new login shell).
 
 #### Build
 
@@ -221,21 +227,24 @@ This single-machine experiment needs one CPU core and synthetic input. It takes
 minutes. Sweep `--key-mod` or `--events` to evaluate additional input shapes.
 
 ```bash
-BENCH_INPUT=synthetic cargo run -p data_source --release -- \
+BENCH_INPUT=synthetic cargo run -p data_source --bin data_source --release -- \
   --streaming --bench --events 1000000 --key-mod 4096
 ```
 
-Expected terminal output includes these fields (numeric values depend on the
-machine):
+Expected terminal output includes these fields. For example, a 64-logical-CPU
+Intel Xeon Gold 6142 CloudLab node produced:
 
 ```text
 hash_fn=sha256
-serial_ns_per_event=<number>
-parallel_ns_per_event=<number>
+serial_ns_per_event=148.059
+parallel_ns_per_event=12.875
+speedup=11.50x
 ```
 
 Convert nanoseconds per event to events per second and compare with the §7.2
-range of 1.6–6.7 million commitments/s.
+range of 1.6–6.7 million commitments/s. The example corresponds to 6.754
+million serial commitments/s and 77.670 million parallel commitments/s; the
+serial result meets (and slightly exceeds) the paper's reported range.
 
 #### Figure 6 — single-machine native aggregation
 
@@ -254,7 +263,19 @@ var,mode,agg_total_s,kafka_recv_s,rocksdb_raw_insert_s,rocksdb_raw_read_s,aggr_c
 ```
 
 Compare the native timing and memory columns with the native series in Figure
-6.
+6. A 2026-09-03 run on a 32-core/64-thread Xeon Gold 6142 produced all 15
+rows. Representative rows (seconds and MB) were:
+
+```text
+var,mode,agg_total_s,aggr_compute_s,fdb_write_s,agg_cluster_host_rss_mb,query_total_s
+256,samples,0.062357,0.028523,0.012718,32.73,0.006
+1024,histogram,0.072858,0.031743,0.020035,33.88,0.000
+4096,cm,0.098553,0.043971,0.034385,32.57,0.000
+```
+
+Sub-millisecond query components round to `0.0` in this CSV. An aggregation
+row with `agg_total_s=0` is invalid; the runner now stops instead of silently
+accepting incomplete metrics.
 
 #### Figure 6 — single-machine ZK aggregation
 
@@ -275,6 +296,15 @@ var,mode,agg_total_s,prove_s,verify_s,kafka_recv_s,rocksdb_raw_insert_s,fdb_writ
 ```
 
 Compare `prove_s`, `verify_s`, `proof_bytes`, and the RSS columns with Figure 6.
+Do not use the paper-machine estimates above as watchdog timeouts: proving is
+hardware- and RISC Zero-version-dependent. For example, the same Xeon Gold
+6142 node with RISC Zero 3.0.6 produced this successfully verified histogram
+row on 2026-09-04:
+
+```text
+var,mode,agg_total_s,prove_s,verify_s,agg_cluster_rss_mb,proof_bytes,journal_bytes,query_total_s,query_prove_s,query_verify_s
+1024,histogram,7567.390,7567.235,0.034,9493.1,229544,793,960.269,960.233,0.034
+```
 
 #### Figure 7 — native query scaling
 
@@ -292,7 +322,22 @@ epoch_type,query,queried_epochs,query_total_s,fdb_lookup_s,deserialize_s,query_c
 ```
 
 Compare `query_total_s` and its component columns with the native curves in
-Figure 7.
+Figure 7. The Xeon Gold 6142 reference run above produced all 27 rows. The
+endpoints were:
+
+```text
+epoch_type,query,queried_epochs,query_total_s,fdb_lookup_s,deserialize_s,query_compute_s
+samples,samples_sum,1,0.344000,0.344,0.0,0.0
+samples,samples_sum,256,0.327000,0.327,0.0,0.0
+histogram,histogram_p90,1,0.167000,0.167,0.0,0.0
+histogram,histogram_p90,256,0.229000,0.175,0.054,0.0
+cm,cm_topk,1,0.044000,0.043,0.001,0.0
+cm,cm_topk,256,0.071000,0.059,0.012,0.0
+```
+
+The histogram and CM merge components increase with the number of queried
+epochs; the samples query is dominated by a roughly constant FDB lookup in
+this run. Millisecond instrumentation rounds smaller components to `0.0`.
 
 #### Figure 7 — ZK query proofs
 
@@ -311,6 +356,19 @@ epoch_type,query,num_epochs,events_per_epoch,keys,prove_ms,verify_ms,max_rss_kb,
 
 There should be rows for 1, 2, and 4 epochs. Compare `prove_ms`, `verify_ms`,
 and `proof_bytes` with the corresponding small-epoch points in Figure 7.
+This target runs 15 independent proofs, not three process invocations. A
+cost-limited partial run on the Xeon Gold 6142/RISC Zero 3.0.6 node completed
+the two 1-epoch samples receipts:
+
+```text
+epoch_type,query,num_epochs,events_per_epoch,keys,prove_ms,verify_ms,max_rss_kb,proof_bytes
+samples,global_sum,1,8192,1024,698549,32,9618860,224050
+samples,topk_hash,1,8192,1024,782927,33,9618860,224202
+```
+
+These rows support the constant, millisecond-scale verification and compact
+proof-size claims. They do not by themselves establish the 2/4-epoch scaling
+claim; a complete CSV must contain all 15 rows.
 
 #### Figure 5 and Table 3 — distributed aggregation
 
@@ -318,7 +376,21 @@ These experiments require up to eight SSH-reachable machines plus Kafka and
 FoundationDB. Run the native sweep first:
 
 ```bash
-FIG=5 ./scripts/eval/run_figures_native.sh
+KAFKA_HOST=<coordinator-private-address> FIG=5 \
+  ./scripts/eval/run_figures_native.sh
+```
+
+Run this on `node0`, with passwordless SSH to `node1` through `node7` and the
+same hostnames used by the script. `KAFKA_HOST` must be reachable from every
+worker; do not use `localhost` for an eight-node run. The driver now checks the
+broker and every worker before cleaning state, and exits with a diagnostic
+instead of waiting indefinitely for Kafka drain.
+
+To smoke-test only the coordinator before reserving all eight nodes, run:
+
+```bash
+KAFKA_HOST=localhost FIG=5 FIG5_SPECS=samples:1 \
+  ./scripts/eval/run_figures_native.sh
 ```
 
 Expected output: `results/fig5_native.csv`, with rows for 1, 2, 4, and 8
@@ -328,7 +400,8 @@ for Figure 6; here `var` is the number of aggregators.
 Then run the real-proof subset:
 
 ```bash
-FIG=5 ./scripts/eval/run_figures_zk.sh
+KAFKA_HOST=<coordinator-private-address> FIG=5 \
+  ./scripts/eval/run_figures_zk.sh
 ```
 
 Expected output: `results/fig5_zk.csv`. By default it contains
@@ -356,6 +429,20 @@ dataset,mode,bench_input,epochs,epoch_logs,total_logs,native_ms_total,native_rss
 ```
 
 Compare the native columns with Figure 4 and the non-ZK columns in Table 2.
+Without the two external datasets, the Xeon Gold 6142 synthetic control run
+produced:
+
+```text
+dataset,mode,native_ms_total,native_rss_mb,zkvm_dev_exec_ms
+synthetic,samples,64.923,24.6,40980
+synthetic,histogram,65.456,18.9,42774
+synthetic,cm,152.678,18.9,86750
+```
+
+Synthetic rows have no paper real-proof anchor, so
+`slowdown_native_vs_proof` is empty and the terminal displays `n/a`. They must
+not be interpreted as a `0x` slowdown claim. Google and CAIDA are explicitly
+reported as `SKIP` until their external files are installed.
 Depending on dataset size, this takes approximately 1–4 hours.
 
 #### Figure 4 / Table 2 — 56-thread ZK aggregation anchor

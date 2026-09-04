@@ -379,25 +379,27 @@ def make_plots(agg_rows, query_rows, breakdown_rows):
     import matplotlib.pyplot as plt
 
     # --- Aggregation: native vs zkVM time, per mode (num_aggregators=8) ---
-    modes = [MODE_LABEL[m] for m in ("samples", "histogram", "cm")]
-    nat, zk = [], []
-    for m in ("samples", "histogram", "cm"):
-        r = next(x for x in agg_rows if x[0] == MODE_LABEL[m] and x[1] == 8)
-        nat.append(float(r[5]))       # native single thread s
-        zk.append(float(r[8]))        # zkvm prove s
-    fig, ax = plt.subplots(figsize=(7, 4))
-    x = range(len(modes))
-    ax.bar([i - 0.2 for i in x], nat, 0.4, label="Native (non-ZK)")
-    ax.bar([i + 0.2 for i in x], zk, 0.4, label="zkVM proof gen")
-    ax.set_yscale("log")
-    ax.set_ylabel("Time (s, log scale)")
-    ax.set_title("Aggregation: native vs zkVM (1 epoch / 16,384 logs, 8 aggregators)")
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(["Hash Table", "Histogram", "CMS"])
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(os.path.join(PLOTS, "non_zk_vs_zk_aggregation.pdf"))
-    plt.close(fig)
+    agg8 = [next(x for x in agg_rows if x[0] == MODE_LABEL[m] and x[1] == 8)
+            for m in ("samples", "histogram", "cm")]
+    if all(r[8] not in ("", None) for r in agg8):
+        modes = [MODE_LABEL[m] for m in ("samples", "histogram", "cm")]
+        nat = [float(r[5]) for r in agg8]
+        zk = [float(r[8]) for r in agg8]
+        fig, ax = plt.subplots(figsize=(7, 4))
+        x = range(len(modes))
+        ax.bar([i - 0.2 for i in x], nat, 0.4, label="Native (non-ZK)")
+        ax.bar([i + 0.2 for i in x], zk, 0.4, label="zkVM proof gen")
+        ax.set_yscale("log")
+        ax.set_ylabel("Time (s, log scale)")
+        ax.set_title("Aggregation: native vs zkVM (1 epoch / 16,384 logs, 8 aggregators)")
+        ax.set_xticks(list(x))
+        ax.set_xticklabels(["Hash Table", "Histogram", "CMS"])
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(os.path.join(PLOTS, "non_zk_vs_zk_aggregation.pdf"))
+        plt.close(fig)
+    else:
+        print("skipped aggregation comparison plot (no complete measured zkVM aggregation set)")
 
     # --- Query: native time vs num epochs, all query types + zkVM anchors ---
     fig, ax = plt.subplots(figsize=(7, 4))
@@ -457,6 +459,20 @@ def fmt_s(x):
 
 
 def build_summary(agg_rows, query_rows, breakdown_rows):
+    if not all(r[8] not in ("", None) for r in agg_rows):
+        local_q = [r for r in query_rows if "zkvm_query_proofs.csv" in r[11]]
+        paper_q = [r for r in query_rows if r[11].startswith("paper ")]
+        out = os.path.join(RESULTS, "non_zk_summary.md")
+        with open(out, "w") as f:
+            f.write("# Non-ZK Native Baseline & zkVM Cost Breakdown\n\n")
+            f.write("Native aggregation and query matrices completed. A complete measured "
+                    "zkVM aggregation set is not present, so aggregation slowdown and "
+                    "memory-blowup claims are intentionally not summarized.\n\n")
+            f.write(f"Locally measured zkVM query receipts included: {len(local_q)}; "
+                    f"paper-reported query anchors included: {len(paper_q)}. See "
+                    "`non_zk_query_baseline.csv` for per-row provenance and values.\n")
+        print("wrote", out, "(partial measured-data coverage)")
+        return
     # Headline 4-row table at num_aggregators=8 (paper's headline config).
     headline = []
     for m in ("samples", "histogram", "cm"):

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
 # ZK (zkVM) baselines for paper Figures 5/6/7 through the real Kafka->RocksDB->
 # aggregator->FDB->querier pipeline WITH real proving + verification. Reports,
 # per cell: prove time, verify time, memory (host + r0vm prover), proof size,
@@ -17,8 +17,14 @@ emit(){ local csv="$1" var="$2" mode="$3"
 import sys,json
 met,var,mode=sys.argv[1],sys.argv[2],sys.argv[3]
 recs=[json.loads(l) for l in open(met) if l.strip()]
-agg=[r for r in recs if r['task']=='aggregation'][-1]
-q=[r for r in recs if r['task']=='query'][-1]
+aggs=[r for r in recs if r.get('task')=='aggregation']
+queries=[r for r in recs if r.get('task')=='query']
+if len(aggs) != 1 or len(queries) != 1:
+    raise SystemExit(f"expected one aggregation and one query metric, got {len(aggs)} and {len(queries)}")
+agg, q = aggs[0], queries[0]
+if (agg.get('epochs_processed', 0) < 1 or agg.get('total_time_s', 0) <= 0
+        or agg.get('proof_bytes_per_epoch', 0) <= 0):
+    raise SystemExit(f"invalid ZK aggregation metrics: {agg}")
 c=agg.get('components_s',{}); qc=q.get('components_s',{})
 def g(d,k): return round(d.get(k,0.0),6)
 print(",".join(str(x) for x in [var,mode,
@@ -36,7 +42,14 @@ print(",".join(str(x) for x in [var,mode,
 PY
 }
 
-run_cell(){ env "$@" MODE=zk bash "$DRV" >/dev/null 2>&1 || echo "  cell FAILED: $*"; }
+run_cell(){
+  local log="$ROOT_DIR/results/_dist_driver.log"
+  if ! env "$@" MODE=zk bash "$DRV" >"$log" 2>&1; then
+    echo "  cell FAILED: $*" >&2
+    tail -100 "$log" >&2
+    return 1
+  fi
+}
 
 HDR="var,mode,agg_total_s,prove_s,verify_s,kafka_recv_s,rocksdb_raw_insert_s,fdb_write_s,agg_host_rss_mb,agg_prover_rss_mb,agg_cluster_rss_mb,proof_bytes,journal_bytes,query_total_s,query_prove_s,query_verify_s,query_fdb_lookup_s,query_host_rss_mb,query_prover_rss_mb"
 
@@ -45,7 +58,7 @@ KEYS="${SYNTH_KEYS:-1024}"
 if [ "${FIG:-6}" = 6 ]; then
   echo "=== Figure 6 ZK: single-machine aggregation (1 epoch, 3 modes) ==="
   C="$ROOT_DIR/results/fig6_zk.csv"; echo "$HDR" > "$C"
-  for mode in histogram samples cm; do
+  for mode in ${FIG6_MODES:-histogram samples cm}; do
     echo "[fig6-zk] mode=$mode keys=$KEYS"; : > "$MET"
     run_cell DATASET=synthetic SYNTH_MODE=$mode SYNTH_KEYS=$KEYS TOTAL_LOGS=16384 NODES="node0"
     emit "$C" "$KEYS" "$mode"

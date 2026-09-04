@@ -33,6 +33,25 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# A newly added docker-group membership does not affect this running shell.
+# Keep --all genuinely one-shot by using sudo only until the next login makes
+# the group membership effective.
+docker_cmd() {
+    if docker info &>/dev/null; then
+        docker "$@"
+    else
+        sudo docker "$@"
+    fi
+}
+
+docker_compose_cmd() {
+    if docker info &>/dev/null; then
+        docker-compose "$@"
+    else
+        sudo docker-compose "$@"
+    fi
+}
+
 # Detect OS
 detect_os() {
     if [[ -f /etc/os-release ]]; then
@@ -163,15 +182,15 @@ install_fdb() {
 
     # Create FDB config directory
     sudo mkdir -p /etc/foundationdb
-    sudo chown "$USER:$USER" /etc/foundationdb 2>/dev/null || true
+    sudo chown "$USER:$(id -gn)" /etc/foundationdb 2>/dev/null || true
 
     # Start FDB via Docker
     log_info "Starting FoundationDB via Docker..."
 
-    if docker ps -a --format '{{.Names}}' | grep -q '^fdb$'; then
-        docker start fdb 2>/dev/null || true
+    if docker_cmd ps -a --format '{{.Names}}' | grep -q '^fdb$'; then
+        docker_cmd start fdb 2>/dev/null || true
     else
-        docker run -d \
+        docker_cmd run -d \
             --name fdb \
             --restart unless-stopped \
             -p 4500:4500 \
@@ -183,9 +202,9 @@ install_fdb() {
 
     # Copy cluster file from container
     log_info "Configuring FDB cluster file..."
-    docker exec fdb cat /var/fdb/fdb.cluster | sudo tee /etc/foundationdb/fdb.cluster >/dev/null 2>&1 || {
+    docker_cmd exec fdb cat /var/fdb/fdb.cluster | sudo tee /etc/foundationdb/fdb.cluster >/dev/null 2>&1 || {
         # If container IP changed, update cluster file
-        FDB_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' fdb)
+        FDB_IP=$(docker_cmd inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' fdb)
         echo "docker:docker@${FDB_IP}:4500" | sudo tee /etc/foundationdb/fdb.cluster >/dev/null
     }
 
@@ -217,8 +236,10 @@ create_directories() {
 
     # Create RocksDB directories for runtime
     log_info "Creating RocksDB directories..."
-    sudo mkdir -p /mydata/rocksdb /mydata/rocksdb_secondary /mydata/rocksdb_agg
-    sudo chown -R "$USER:$USER" /mydata/rocksdb /mydata/rocksdb_secondary /mydata/rocksdb_agg
+    sudo mkdir -p /mydata/rocksdb /mydata/rocksdb_secondary /mydata/rocksdb_agg \
+        /mydata/zk-analytics-runs
+    sudo chown -R "$USER:$(id -gn)" /mydata/rocksdb /mydata/rocksdb_secondary \
+        /mydata/rocksdb_agg /mydata/zk-analytics-runs
 
     log_info "All directories created successfully"
 }
@@ -327,7 +348,7 @@ EOF
 
     # Start Kafka
     cd "$ROOT_DIR/scripts"
-    docker-compose -f docker-compose-kafka.yml up -d
+    docker_compose_cmd -f docker-compose-kafka.yml up -d
 
     # Wait for Kafka to be ready
     log_info "Waiting for Kafka to be ready..."
@@ -335,13 +356,13 @@ EOF
 
     # Create topic
     log_info "Creating Kafka topic: raw_events"
-    docker exec kafka kafka-topics --bootstrap-server localhost:9092 \
+    docker_cmd exec kafka kafka-topics --bootstrap-server localhost:9092 \
         --create --topic raw_events \
         --partitions 16 --replication-factor 1 \
         --config retention.ms=604800000 2>/dev/null || true
 
     # Verify
-    if docker exec kafka kafka-topics --bootstrap-server localhost:9092 --list | grep -q raw_events; then
+    if docker_cmd exec kafka kafka-topics --bootstrap-server localhost:9092 --list | grep -q raw_events; then
         log_info "Kafka topic 'raw_events' created"
     else
         log_warn "Failed to create Kafka topic"
@@ -362,7 +383,7 @@ build_project() {
 
     # Build with required features
     log_info "Building data source..."
-    cargo build --release -p data_source
+    cargo build --release -p data_source --features kafka
 
     log_info "Building aggregator with kafka + fdb features..."
     cargo build --release -p aggregator --features "kafka fdb"
@@ -382,7 +403,7 @@ print_status() {
     echo ""
 
     # Docker
-    if command -v docker &>/dev/null && docker info &>/dev/null; then
+    if command -v docker &>/dev/null && docker_cmd info &>/dev/null; then
         echo -e "Docker:        ${GREEN}OK${NC} ($(docker --version | cut -d' ' -f3 | tr -d ','))"
     else
         echo -e "Docker:        ${RED}NOT READY${NC} (may need: newgrp docker)"
@@ -428,14 +449,14 @@ print_status() {
     fi
 
     # Kafka
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^kafka$'; then
+    if docker_cmd ps --format '{{.Names}}' 2>/dev/null | grep -q '^kafka$'; then
         echo -e "Kafka:         ${GREEN}RUNNING${NC}"
     else
         echo -e "Kafka:         ${RED}NOT RUNNING${NC}"
     fi
 
     # FDB Container
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^fdb$'; then
+    if docker_cmd ps --format '{{.Names}}' 2>/dev/null | grep -q '^fdb$'; then
         echo -e "FDB Container: ${GREEN}RUNNING${NC}"
     else
         echo -e "FDB Container: ${RED}NOT RUNNING${NC}"

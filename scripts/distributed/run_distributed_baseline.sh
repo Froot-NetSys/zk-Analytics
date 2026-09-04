@@ -29,9 +29,15 @@ EPOCH_LOGS="${EPOCH_LOGS:-16384}"
 COMMIT_BATCH_SIZE="${COMMIT_BATCH_SIZE:-8}"
 KAFKA_HOST="${KAFKA_HOST:-192.0.2.1}"
 KAFKA_BROKERS="${KAFKA_HOST}:9092"
-FDB_CLUSTER_FILE="${FDB_CLUSTER_FILE:-$HOME/zktel-dist/fdb.cluster}"
 QUERIER_PORT="${QUERIER_PORT:-8090}"
 DIST="$HOME/zktel-dist"           # per-node deploy dir (bin/, lib/)
+if [[ -z "${FDB_CLUSTER_FILE:-}" ]]; then
+  if [[ "$COORD" == "node0" && -f /etc/foundationdb/fdb.cluster ]]; then
+    FDB_CLUSTER_FILE=/etc/foundationdb/fdb.cluster
+  else
+    FDB_CLUSTER_FILE="$DIST/fdb.cluster"
+  fi
+fi
 REMOTE_ENV="LD_LIBRARY_PATH=$DIST/lib PATH=$HOME/.cargo/bin:\$PATH"
 AGGR_IDLE_TIMEOUT_SECS="${AGGR_IDLE_TIMEOUT_SECS:-20}"
 MEM_INTERVAL="${MEM_INTERVAL:-1.0}"
@@ -63,9 +69,11 @@ EPOCH_BATCH_THRESHOLD=$(( EPOCH_LOGS / COMMIT_BATCH_SIZE ))
 # Unique per-run RocksDB dir prefix so a leftover consumer from a prior run can
 # never collide with / corrupt this run's fresh DB.
 RUNID="${RUNID:-r$(date +%s)}"
-RAWP="/mydata/${RUNID}_raw"; AGGP="/mydata/${RUNID}_agg"
+RUN_ROOT="${RUN_ROOT:-/mydata/zk-analytics-runs}"
+mkdir -p "$RUN_ROOT"
+RAWP="$RUN_ROOT/${RUNID}_raw"; AGGP="$RUN_ROOT/${RUNID}_agg"
 TAG="${DATASET}_${AGG_MODE}_n${NUM_AGGREGATORS}_${MODE}"
-WORK="/mydata/dist_run/$TAG"; LOGDIR="$WORK/logs"
+WORK="$RUN_ROOT/dist_run/$TAG"; LOGDIR="$WORK/logs"
 RESULTS_DIR="$ROOT_DIR/results"; METRICS="$RESULTS_DIR/_dist_metrics.jsonl"
 FDB_SUBSPACE="zktel_dist_${TAG}"; KAFKA_TOPIC="raw_${TAG}"
 mkdir -p "$LOGDIR" "$RESULTS_DIR"
@@ -77,8 +85,28 @@ RISC0_DEV_MODE="${RISC0_DEV_MODE:-0}"
 
 LBIN="$ROOT_DIR/target/release"   # local (node0) binaries
 RBIN="$DIST/bin"                        # remote node binaries
+node_bin() { if [[ "$1" == "$COORD" || "$1" == "node0" ]]; then echo "$LBIN"; else echo "$RBIN"; fi; }
+node_memtrace() { if [[ "$1" == "$COORD" || "$1" == "node0" ]]; then echo "$ROOT_DIR/scripts/lib/mem_trace.py"; else echo "$RBIN/mem_trace.py"; fi; }
 
 echo "[dist] $DATASET mode=$MODE nodes=$NUM_AGGREGATORS ($NODES_STR) epoch=$EPOCH_LOGS"
+
+# Fail before cleanup or a long drain wait when the cluster configuration is
+# wrong. KAFKA_HOST must be reachable from every worker for a multi-node run.
+if ! timeout 5 bash -c ">/dev/tcp/${KAFKA_HOST}/9092" 2>/dev/null; then
+  echo "[dist] ERROR: Kafka is not reachable at ${KAFKA_HOST}:9092; set KAFKA_HOST to the coordinator address" >&2
+  exit 2
+fi
+for node in "${NODES[@]:1}"; do
+  if ! ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$node" true >/dev/null 2>&1; then
+    echo "[dist] ERROR: worker '$node' is not reachable with non-interactive SSH" >&2
+    exit 2
+  fi
+  if ! ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$node" \
+      "timeout 5 bash -c '>/dev/tcp/${KAFKA_HOST}/9092'" >/dev/null 2>&1; then
+    echo "[dist] ERROR: Kafka at ${KAFKA_HOST}:9092 is not reachable from worker '$node'" >&2
+    exit 2
+  fi
+done
 
 # run on a node (foreground, blocks): $1=node, rest=command.
 on_node() { local node="$1"; shift; if [ "$node" = "$COORD" ] || [ "$node" = node0 ]; then bash -c "$*"; else ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$node" "$*"; fi; }
@@ -96,7 +124,7 @@ spawn_node() { local node="$1"; shift; local cmd="$*";
 # Reliable kill: r0vm has an EMPTY /proc/cmdline so pkill -f never matches it ->
 # must use comm (-x r0vm). The aggregator comm truncates to "zktelemetry-ris".
 # Kill aggregator+consumer FIRST (the aggregator respawns r0vm), then r0vm.
-ALLNODES="node0 node1 node2 node3 node4 node5 node6 node7"
+ALLNODES="$NODES_STR"
 # PID-based kill is reliable; pkill -x/-9 on r0vm races (it survives). r0vm
 # must be killed AFTER the aggregator (which would respawn it).
 KILLPATS='for p in $(pgrep -x zktelemetry-ris); do kill -9 $p 2>/dev/null; done; for p in $(pgrep -x kafka-consumer); do kill -9 $p 2>/dev/null; done; pkill -9 -f mem_trace.py 2>/dev/null; sleep 1; for p in $(pgrep -x r0vm); do kill -9 $p 2>/dev/null; done'
@@ -133,7 +161,8 @@ sleep 1
 # ---- 1) consumers on each node -------------------------------------------
 echo "[dist] starting $NUM_AGGREGATORS kafka-consumers (one per node) ..."
 for ((i=0;i<NUM_AGGREGATORS;i++)); do
-  spawn_node "${NODES[i]}" "cd $RBIN && env $REMOTE_ENV E2E_TIMING=1 KAFKA_BROKERS=$KAFKA_BROKERS KAFKA_TOPIC=$KAFKA_TOPIC KAFKA_GROUP_ID=cg_${TAG}_$i KAFKA_PARTITION_ID=$i RAW_DB_PATH=${RAWP}_$i EPOCH_BATCH_THRESHOLD=$EPOCH_BATCH_THRESHOLD EPOCH_TIMEOUT_MS=600000 ./kafka-consumer > /tmp/dist_consumer_$i.log 2>&1"
+  BDIR="$(node_bin "${NODES[i]}")"
+  spawn_node "${NODES[i]}" "cd $BDIR && env $REMOTE_ENV E2E_TIMING=1 KAFKA_BROKERS=$KAFKA_BROKERS KAFKA_TOPIC=$KAFKA_TOPIC KAFKA_GROUP_ID=cg_${TAG}_$i KAFKA_PARTITION_ID=$i RAW_DB_PATH=${RAWP}_$i EPOCH_BATCH_THRESHOLD=$EPOCH_BATCH_THRESHOLD EPOCH_TIMEOUT_MS=600000 ./kafka-consumer > /tmp/dist_consumer_$i.log 2>&1"
 done
 sleep 5
 
@@ -187,10 +216,12 @@ echo "[dist] running $NUM_AGGREGATORS aggregators in parallel (mode=$MODE) ..."
 ALOG="/tmp/${RUNID}_agg"; AMEM="/tmp/${RUNID}_mem"
 AGG_START=$(date +%s.%N)
 for ((i=0;i<NUM_AGGREGATORS;i++)); do
+  BDIR="$(node_bin "${NODES[i]}")"
+  MEMTRACE="$(node_memtrace "${NODES[i]}")"
   spawn_node "${NODES[i]}" "rm -f ${ALOG}_$i.DONE; \
-    nohup python3 $RBIN/mem_trace.py --out ${AMEM}_$i.csv --summary ${AMEM}_$i.json --match aggregator --match r0vm --interval $MEM_INTERVAL > /dev/null 2>&1 & \
+    nohup python3 $MEMTRACE --out ${AMEM}_$i.csv --summary ${AMEM}_$i.json --match aggregator --match r0vm --interval $MEM_INTERVAL > /dev/null 2>&1 & \
     env $REMOTE_ENV E2E_TIMING=1 RISC0_DEV_MODE=$RISC0_DEV_MODE NO_ZKVM_PROOF=$NO_ZKVM_PROOF RAW_ROCKSDB_PATH=${RAWP}_$i AGG_ROCKSDB_PATH=${AGGP}_$i AGGREGATOR_ID=$i FDB_CLUSTER_FILE=$FDB_CLUSTER_FILE FDB_SUBSPACE=$FDB_SUBSPACE AGGR_IDLE_TIMEOUT_SECS=$AGGR_IDLE_TIMEOUT_SECS AGGR_PIPELINE=rocksdb RAYON_NUM_THREADS=56 \
-    /usr/bin/time -v $RBIN/aggregator --rocksdb --mode $AGG_MODE --threads 56 > ${ALOG}_$i.log 2> ${ALOG}_${i}_time.log; \
+    /usr/bin/time -v $BDIR/aggregator --rocksdb --mode $AGG_MODE --threads 56 > ${ALOG}_$i.log 2> ${ALOG}_${i}_time.log; \
     pkill -INT -f mem_trace.py 2>/dev/null; sleep 3; touch ${ALOG}_$i.DONE"
 done
 # Poll each node for its DONE marker (cheap test -f over SSH; no long-held channel).
