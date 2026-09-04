@@ -41,16 +41,19 @@ immutable release/archive.
 
 ## Hardware requirements
 
-**Requires specific hardware for full reproduction.** The short functional
-evaluation runs on a single x86-64 machine with 8 GB RAM and 10 GB free disk.
-Efficient real proof generation requires AVX-512, at least 64 GB RAM, and many
-CPU cores. The paper used CloudLab `c6420` machines, each with two 16-core
-Intel Xeon Gold 6142 CPUs (32 physical cores total).
-Fully validating the distributed scaling of aggregators in Figure 5 and Table 3
-requires eight SSH-reachable CloudLab `c6420` machines (or equivalent), plus
-Kafka and FoundationDB; the distributed Figure 4 experiments use the same
-cluster. Native and dev-mode checks run on one machine, but do not validate
-distributed scaling.
+**Full reproduction requires specific hardware:**
+
+- **Short functional evaluation:** one x86-64 machine with 8 GB RAM and 10 GB
+  free disk. Native and dev-mode checks run on one machine, but do not validate
+  distributed scaling.
+- **Real proof generation:** an AVX-512 CPU, at least 64 GB RAM, and many CPU
+  cores.
+- **Paper hardware:** CloudLab `c6420` machines, each with two 16-core Intel
+  Xeon Gold 6142 CPUs (32 physical cores total).
+- **Distributed experiments:** fully validating aggregator scaling in Figure 5
+  and Table 3 requires eight SSH-reachable CloudLab `c6420` machines (or
+  equivalent), plus Kafka and FoundationDB. The distributed Figure 4
+  experiments use the same cluster.
 
 ## Comments for the AEC
 
