@@ -313,6 +313,14 @@ For a reduced real-proof check, select points explicitly, for example:
 FIG6_MODES=histogram FIG6_KEYS=256 make eval-fig6-aggregator-zk
 ```
 
+Valid `FIG6_MODES` values are `samples`, `histogram`, and `cm`. Both
+`FIG6_MODES` and `FIG6_KEYS` accept space-separated selections, for example:
+
+```bash
+FIG6_MODES="samples cm" FIG6_KEYS="256 4096" \
+  make eval-fig6-aggregator-zk
+```
+
 #### Figure 7 — zkVM query benchmark
 
 Figure 7 is the standalone query benchmark over in-memory synthetic epochs. It
