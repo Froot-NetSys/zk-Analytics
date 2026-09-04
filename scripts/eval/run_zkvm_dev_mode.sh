@@ -23,6 +23,9 @@ THREADS="${THREADS:-56}"
 SEED="${SEED:-0xA66A1E}"
 RUN_AGGREGATION="${RUN_AGGREGATION:-1}"
 RUN_QUERY="${RUN_QUERY:-1}"
+FIG6_EPOCH_EVENTS="${FIG6_EPOCH_EVENTS:-16384}"
+FIG6_KEYS="${FIG6_KEYS:-256 512 1024 2048 4096}"
+FIG6_MODES="${FIG6_MODES:-samples histogram cm}"
 
 if [ "$RUN_AGGREGATION" = 1 ]; then
   echo "[dev] building aggregator benchmark ..."
@@ -37,23 +40,31 @@ fi
 
 # -------- Aggregation (dev mode): Figure 6, one 16,384-log epoch ------------
 if [ "$RUN_AGGREGATION" = 1 ]; then
-AGG_OUT="$ROOT_DIR/results/zkvm_dev_aggregation.csv"
-echo "mode,num_aggregators,epochs,epoch_events,dev_exec_ms,verify_ms,dev_rss_kb" > "$AGG_OUT"
-for mode in samples histogram cm; do
+AGG_OUT="${FIG6_DEV_OUT:-$ROOT_DIR/results/zkvm_dev_aggregation.csv}"
+echo "mode,unique_keys,events_per_key,num_aggregators,epochs,epoch_events,dev_exec_ms,verify_ms,dev_rss_kb" > "$AGG_OUT"
+for mode in $FIG6_MODES; do
+  for unique_keys in $FIG6_KEYS; do
+  if (( FIG6_EPOCH_EVENTS % unique_keys != 0 )); then
+    echo "[dev] FIG6_EPOCH_EVENTS=$FIG6_EPOCH_EVENTS must be divisible by unique_keys=$unique_keys" >&2
+    exit 2
+  fi
   epochs=1
-  log="$ROOT_DIR/results/_dev_agg_${mode}_e${epochs}.log"
-  echo "[dev] aggregation mode=$mode aggregator=1 epochs=$epochs (RISC0_DEV_MODE=1) ..."
+  events_per_key=$((FIG6_EPOCH_EVENTS / unique_keys))
+  log="$ROOT_DIR/results/_dev_agg_${mode}_k${unique_keys}.log"
+  echo "[dev] aggregation mode=$mode unique_keys=$unique_keys events_per_key=$events_per_key (RISC0_DEV_MODE=1) ..."
   /usr/bin/time -v env RISC0_DEV_MODE=1 RAYON_NUM_THREADS="$THREADS" \
     SAMPLES_HT_BUCKETS=64 SAMPLES_HT_BUCKET_CAP=4 HISTOGRAM_SLOTS=32 CM_TOPK_SLOTS=100 \
-    "$HOST" --bench --mode "$mode" --epochs "$epochs" --series 128 \
-      --samples-per-series 128 --seed "$SEED" --threads "$THREADS" \
+    "$HOST" --bench --mode "$mode" --epochs "$epochs" --series "$unique_keys" \
+      --samples-per-series "$events_per_key" --seed "$SEED" --threads "$THREADS" \
     > "$log" 2>&1
   pm=$(grep -oE '^prove_ms_total=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
   vm=$(grep -oE '^verify_ms_total=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
   ee=$(grep -oE '^epoch_events=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
   rss=$(grep -oE 'Maximum resident set size \(kbytes\): [0-9]+' "$log" | grep -oE '[0-9]+$' | head -1 || true)
-  printf '%s,1,%s,%s,%s,%s,%s\n' "$mode" "$epochs" "${ee:-16384}" "${pm:-}" "${vm:-}" "${rss:-}" >> "$AGG_OUT"
+  printf '%s,%s,%s,1,%s,%s,%s,%s,%s\n' "$mode" "$unique_keys" "$events_per_key" \
+    "$epochs" "${ee:-$FIG6_EPOCH_EVENTS}" "${pm:-}" "${vm:-}" "${rss:-}" >> "$AGG_OUT"
   echo "  dev_exec_ms=${pm:-?} verify_ms=${vm:-?} rss_kb=${rss:-?}"
+  done
 done
 fi
 

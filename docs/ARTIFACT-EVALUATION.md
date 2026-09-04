@@ -276,16 +276,18 @@ make eval-kill
 
 Figure 6 is the standalone aggregator benchmark. It uses synthetic epochs and
 does not include Kafka, RocksDB, FoundationDB, or network transmission. First,
-the following inexpensive dev-mode command executes each aggregation guest for
-one 16,384-event epoch:
+the following dev-mode command executes each aggregation guest for one
+16,384-event epoch at every Figure 6 x-axis point:
 
 ```bash
 make eval-fig6-aggregator-dev
 ```
 
-Expected output: `results/zkvm_dev_aggregation.csv`. These values validate guest
-execution only; they are not proof-generation, proof-verification, proof-size,
-or end-to-end measurements.
+Expected output: `results/zkvm_dev_aggregation.csv`. Its `unique_keys` column
+contains 256, 512, 1024, 2048, and 4096 for every aggregation mode; the epoch
+always contains 16,384 events, so `events_per_key` is respectively 64, 32, 16,
+8, and 4. These values validate guest execution only; they are not
+proof-generation, proof-verification, proof-size, or end-to-end measurements.
 
 For measured cryptographic proofs, run:
 
@@ -294,16 +296,22 @@ make eval-fig6-aggregator-zk
 ```
 
 This requires AVX-512 and many cores and takes hours. Expected output:
-`results/zkvm_aggregation_56threads.csv`, with one directly measured row for
-each of `histogram`, `samples`, and `cm`:
+`results/zkvm_aggregation_56threads.csv`, with the same 15 directly measured
+`mode × unique_keys` points:
 
 ```text
-mode,threads,series,samples_per_series,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,time_max_rss_kb,proof_bytes,journal_bytes
+mode,unique_keys,events_per_key,threads,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,time_max_rss_kb,proof_bytes,journal_bytes
 ```
 
 Compare proving time, verification time, and peak RSS with Figure 6. The command
 runs the aggregator benchmark directly; storage and transmission costs belong
 to Table 2 and the end-to-end experiments, not this figure.
+
+For a reduced real-proof check, select points explicitly, for example:
+
+```bash
+FIG6_MODES=histogram FIG6_KEYS=256 make eval-fig6-aggregator-zk
+```
 
 #### Figure 7 — zkVM query benchmark
 
