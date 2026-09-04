@@ -44,15 +44,14 @@ immutable release/archive.
 **Requires specific hardware for full reproduction.** The short functional
 evaluation runs on a single x86-64 machine with 8 GB RAM and 10 GB free disk.
 Efficient real proof generation requires AVX-512, at least 64 GB RAM, and many
-CPU cores. The paper used Intel Xeon Gold 5512U machines with 56 cores.
+CPU cores. The paper used CloudLab `c6420` machines, each with two 16-core
+Intel Xeon Gold 6142 CPUs (32 physical cores total).
 Distributed Figure 4/5 and Table 3 experiments require up to eight machines
 reachable over SSH, plus Kafka and FoundationDB. Native and dev-mode checks do
 not require this cluster.
 
 ## Comments for the AEC
 
-- Start with **Getting started instructions** below. This checks the native
-  analytics and zkVM guest/witness paths without running expensive proofs.
 - Real proof generation takes hours per experiment. Larger Figure 4 and Figure
   7 points can take days; the guide identifies reduced-scale proof runs.
 - The vehicle-emissions dataset is bundled. Google Cluster v3 must be downloaded
@@ -62,31 +61,6 @@ not require this cluster.
   time. Reset commands are listed under Troubleshooting.
 - Please report setup or execution problems through the artifact-submission
   discussion channel so the instructions can be corrected during kick-the-tires.
-
-## Getting started instructions
-
-On a clean Ubuntu/Debian x86-64 machine, complete the dependency installation in
-Step 0, then run:
-
-```bash
-mkdir -p target/tmp
-cargo build --release
-make eval-non-zk-baseline
-make eval-zkvm-dev-mode
-```
-
-Success means all commands exit with status 0 and the following outputs exist:
-
-| Check | What it validates | Expected output |
-|---|---|---|
-| `cargo build --release` | Host crates and RISC Zero guest ELFs compile | release artifacts under `target/` |
-| `make eval-non-zk-baseline` | Native aggregation and query analytics run | `results/non_zk_aggregation_baseline.csv`, `results/non_zk_query_baseline.csv`, and `results/zk_cost_breakdown.csv`; comparison summary/plots are added when measured ZK inputs exist |
-| `make eval-zkvm-dev-mode` | The real zkVM guests execute and witnesses are generated; cryptographic proving is skipped | `results/zkvm_dev_*.csv` |
-
-This is the intended functional evaluation. `RISC0_DEV_MODE=1` is deliberately
-used only by the dev-mode target; it does **not** produce a proof and must not be
-used to evaluate proof-generation or verification performance. For real proofs,
-run the applicable Step 2 rows.
 
 ## Claims under evaluation
 
@@ -106,7 +80,7 @@ run the applicable Step 2 rows.
 
 | | Functional check / native baselines | Full ZK reproduction |
 |---|---|---|
-| CPU | any x86-64 | **AVX-512**, many cores (paper: Xeon Gold 5512U, 56 cores) |
+| CPU | any x86-64 | **AVX-512**, many cores (paper: CloudLab `c6420`, dual 16-core Intel Xeon Gold 6142) |
 | RAM | 8 GB | ≥ 64 GB (prover peaks ~9–10 GB/node; parallel proving needs headroom) |
 | Disk | **10 GB free** | 50+ GB free (RocksDB/FoundationDB + datasets) |
 | Time | minutes | **hours per experiment** (see table below) |
