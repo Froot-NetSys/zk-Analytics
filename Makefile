@@ -44,7 +44,8 @@ eval-fig7-query-dev:
 
 eval-fig7-query-zk: eval-zkvm-query-proofs
 
-# Paper Table 2: one-machine vanilla pipeline with Kafka/RocksDB/FDB, no ZK.
+# Paper Table 2 Vanilla side: Figure 4's real 8/8/4-node dataset deployments,
+# with Kafka/RocksDB/FDB and no ZK.
 eval-table2-native:
 	./scripts/eval/run_table2_native.sh
 

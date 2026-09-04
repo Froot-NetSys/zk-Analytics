@@ -18,8 +18,8 @@ table (Figures 4–7, Tables 1–3) to a concrete command. The main entry points
   zkVM aggregator benchmark (Figure 6).
 - `make eval-fig7-query-dev`, `make eval-fig7-query-zk` — standalone zkVM query
   benchmark (Figure 7).
-- `make eval-table2-native` — vanilla non-ZK pipeline through Kafka, RocksDB,
-  and FoundationDB (Table 2).
+- `make eval-table2-native` — the 8/8/4-node Google, CAIDA, and Vehicle
+  Vanilla pipelines through Kafka, RocksDB, and FoundationDB (Table 2).
 
 ## Non-ZK Native Baseline (SIGCOMM camera-ready)
 

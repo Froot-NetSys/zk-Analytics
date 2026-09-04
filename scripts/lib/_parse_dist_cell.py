@@ -161,6 +161,7 @@ def main():
         "components_s": {**{k:round(v,6) for k,v in consumer_insert(args.logdir).items()},
                          **{k:round(v,6) for k,v in crit["comp"].items()}},
         "agg_wall_clock_s": round(args.agg_wall,3),
+        "critical_path_epochs": crit["epochs"],
         "epochs_processed": sum(x["epochs"] for x in nodes),
         # Proof size & public output (zk): per-epoch (representative) + cluster
         # total summed over every epoch on every node.

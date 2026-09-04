@@ -51,9 +51,10 @@ immutable release/archive.
 - **Paper hardware:** CloudLab `c6420` machines, each with two 16-core Intel
   Xeon Gold 6142 CPUs (32 physical cores total).
 - **Distributed experiments:** fully validating aggregator scaling in Figure 5
-  and Table 3 requires eight SSH-reachable CloudLab `c6420` machines (or
-  equivalent), plus Kafka and FoundationDB. The bundled vehicle-emissions
-  Figure 4 run uses four of these machines.
+  and Table 3, or all three Table 2 dataset columns, requires eight
+  SSH-reachable CloudLab `c6420` machines (or equivalent), plus Kafka and
+  FoundationDB. The bundled vehicle-emissions Figure 4/Table 2 run uses four
+  of these machines.
 
 ## Comments for the AEC
 
@@ -233,45 +234,6 @@ serial_ns_per_event=<measured value>
 Convert nanoseconds per event to events per second and compare with the §7.2
 range of 1.6–6.7 million commitments/s.
 
-#### Table 2 — vanilla non-ZK pipeline
-
-This run needs local Kafka and FoundationDB and takes approximately 30 minutes
-on the paper machine. It runs one local aggregator over one 16,384-event epoch
-for every aggregation mode and requested key cardinality.
-
-```bash
-KAFKA_HOST=localhost make eval-table2-native
-```
-
-Expected output: `results/table2_native.csv`. The default sweep directly measures
-15 rows: three aggregation modes times exact key cardinalities 256, 512, 1024,
-2048, and 4096. `var` is the number of distinct keys actually generated and
-processed; it is not merely a row label. The CSV has the following header:
-
-```text
-var,mode,agg_total_s,kafka_recv_s,rocksdb_raw_insert_s,rocksdb_raw_read_s,aggr_compute_s,fdb_write_s,query_total_s,fdb_lookup_s,deserialize_s,query_compute_s,agg_per_node_host_rss_mb,agg_cluster_host_rss_mb,agg_prover_rss_mb,query_rss_mb,query_prover_rss_mb
-```
-
-Compare the timing and memory columns with the vanilla (non-ZK) baseline in
-Table 2. `agg_total_s` covers the aggregation stage only: reading the epoch from
-RocksDB, native aggregation computation, and the FoundationDB write. Kafka
-receipt and RocksDB insertion are transmission/ingestion costs, are reported
-separately, and are intentionally not added to `agg_total_s`.
-
-For these short native runs, the runner samples process RSS every 10 ms and
-starts the aggregator only after the tracer is ready. GNU `time` maximum RSS is
-used as a fallback if polling still misses the process. Sub-millisecond query
-components may round to `0.0`; an aggregation row with `agg_total_s=0` is
-invalid and stops the runner.
-
-Press Ctrl-C once to terminate the active cell and its local benchmark
-processes. If the shell or machine was interrupted abnormally, clean up any
-remaining benchmark processes before retrying:
-
-```bash
-make eval-kill
-```
-
 #### Figure 6 — zkVM aggregator benchmark
 
 Figure 6 is the standalone aggregator benchmark. It uses synthetic epochs and
@@ -405,6 +367,48 @@ KAFKA_HOST=<coordinator-private-address> make eval-fig4-vehicle-zk
 Expected output: `results/e2e_real_zk/vehicle_real_zk.jsonl`. Only this second
 command may be used for proof-generation and proof-verification performance.
 
+#### Table 2 — vanilla baseline on the end-to-end setups
+
+Table 2 uses the same real datasets and distributed topologies as Figure 4:
+Google Cluster with eight aggregators, CAIDA with eight aggregators, and Vehicle
+Emissions with four aggregators. It is not a single-machine synthetic sweep.
+All three runs include log commitment, Kafka ingestion, RocksDB raw storage,
+parallel native aggregation, FoundationDB storage, and the native query.
+
+After installing the Google and CAIDA inputs and configuring passwordless SSH
+from `node0` to `node1` through `node7`, run the Vanilla side of Table 2 with:
+
+```bash
+KAFKA_HOST=<coordinator-private-address> make eval-table2-native
+```
+
+Expected output: `results/table2_native.csv`, plus one raw JSONL file per
+dataset under `results/table2_native/`. Every row is measured using the actual
+number of aggregator machines; no multi-node values are inferred. The CSV is
+organized around the Vanilla columns in the paper table:
+
+```text
+dataset,num_aggregators,epochs_on_critical_node,rocksdb_insert_ms_per_epoch,rocksdb_read_ms_per_epoch,fdb_write_ms_per_epoch,fdb_read_ms_per_query,aggregation_compute_ms_per_epoch,query_ms_per_query,agg_peak_rss_mb_per_node,query_peak_rss_mb
+```
+
+`aggregation_compute_ms_per_epoch` corresponds to Table 2's “Total Aggregation
+time (in parallel).” Kafka transmission is not added to this value; RocksDB and
+FoundationDB costs are reported in their own columns. The ZK columns in Table 2
+come from the matching real-ZK Figure 4 runs, not from this Vanilla command.
+
+If only the bundled vehicle-emissions data is available, directly measure just
+that Table 2 column with four machines:
+
+```bash
+KAFKA_HOST=<coordinator-private-address> TABLE2_SPECS=vehicle:4 \
+  make eval-table2-native
+```
+
+Native processes are sampled every 10 ms, with GNU `time` maximum RSS as a
+fallback. Press Ctrl-C once to terminate the current cell. If an abnormal
+termination leaves benchmark processes behind, run `make eval-kill` locally or
+`./scripts/util/kill_bench_processes.sh --all-machines` for the cluster.
+
 > **Kafka/FDB endpoints.** Table 2, Figure 4, Figure 5, and Table 3 use the
 > storage-backed `run_distributed_baseline.sh` pipeline, which connects to Kafka
 > and FoundationDB. The shipped
@@ -431,8 +435,8 @@ These need multiple machines reachable over SSH. Copy
 (`scripts/ip_defaults.sh`), and `KAFKA_BROKERS`/`FDB_*`, then drive the runs with
 `scripts/distributed/run_distributed_baseline.sh`. See
 `docs/DISTRIBUTED_SETUP.md` and `docs/DISTRIBUTED_E2E_GUIDE.md`. A single
-machine can run Table 2 and the standalone Figure 6/7 benchmarks, but cannot
-validate Figure 4 or Figure 5/Table 3 distributed behavior.
+machine can run the standalone Figure 6/7 benchmarks, but cannot validate the
+distributed Figure 4, Table 2, Figure 5, or Table 3 behavior.
 
 ## Cost-limited claims (read before reproducing)
 

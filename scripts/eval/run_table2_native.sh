@@ -1,61 +1,96 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Vanilla (non-ZK) Table 2 baseline with the real storage pipeline:
-# Kafka -> RocksDB -> one native aggregator -> FoundationDB -> native query.
-# The default sweep measures three aggregation modes and five exact key
-# cardinalities over one 16,384-event epoch.  It is not Figure 6: Figure 6 is
-# the standalone zkVM aggregator benchmark.
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT_DIR"
-DRV="$ROOT_DIR/scripts/distributed/run_distributed_baseline.sh"
-MET="$ROOT_DIR/results/_dist_metrics.jsonl"
+# Table 2 Vanilla (non-ZK) runs at the SAME end-to-end setups as Figure 4:
+# Google/hash-table/8 aggregators, CAIDA/CM/8, Vehicle/histogram/4.
+# Full real pipeline (data source w/ hash-chain commitment -> Kafka -> RocksDB ->
+# aggregator -> FoundationDB -> querier). Captures RocksDB/FDB read+write timing,
+# native aggregation time, and native query time per dataset.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT"
+DRV="$ROOT/scripts/distributed/run_distributed_baseline.sh"
+MET="$ROOT/results/_dist_metrics.jsonl"
+OUTDIR="$ROOT/results/table2_native"; mkdir -p "$OUTDIR"
+OUT="$ROOT/results/table2_native.csv"
+source "$ROOT/scripts/lib/common.sh"
+export AGG_MAX_WAIT=900 AGGR_IDLE_TIMEOUT_SECS=20
+nodes_for(){ local n="$1" o=""; for ((i=0;i<n;i++)); do o="$o node$i"; done; echo "${o# }"; }
+LOG=/tmp/e2e_native.log; : > "$LOG"
+say(){ echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG"; }
 
-# extract_row var mode -> append "var,mode,<agg breakdown>,<query breakdown>" to $2csv
-emit(){ local csv="$1" var="$2" mode="$3"
-  python3 - "$MET" "$var" "$mode" >> "$csv" <<'PY'
-import sys,json
-met,var,mode=sys.argv[1],sys.argv[2],sys.argv[3]
-recs=[json.loads(l) for l in open(met) if l.strip()]
-aggs=[r for r in recs if r.get('task')=='aggregation']
-queries=[r for r in recs if r.get('task')=='query']
-if len(aggs) != 1 or len(queries) != 1:
-    raise SystemExit(f"expected one aggregation and one query metric, got {len(aggs)} and {len(queries)}")
-agg, q = aggs[0], queries[0]
-if agg.get('epochs_processed', 0) < 1 or agg.get('total_time_s', 0) <= 0:
-    raise SystemExit(f"invalid aggregation metrics: {agg}")
-c=agg.get('components_s',{}); qc=q.get('components_s',{})
-def g(d,k): return round(d.get(k,0.0),6)
-print(",".join(str(x) for x in [var,mode,
-  round(agg['total_time_s'],6), g(c,'kafka_recv'), g(c,'rocksdb_raw_insert'),
-  g(c,'rocksdb_raw_read'), g(c,'aggr_compute'), g(c,'fdb_write'),
-  round(q['total_time_s'],6), g(qc,'fdb_lookup'), g(qc,'deserialize'), g(qc,'query_compute'),
-  # memory (MB): per-node aggregator host RSS, cluster host sum, prover sum, query RSS
-  round(agg.get('per_node_host_rss_mb',0.0),2), round(agg.get('host_peak_rss_mb',0.0),2),
-  round(agg.get('prover_peak_rss_mb',0.0),2), round(q.get('peak_rss_mb',0.0),2),
-  round(q.get('prover_peak_rss_mb',0.0),2)]))
+require_dataset() {
+  case "$1" in
+    google)
+      if [[ ! -d "$ROOT/testdata/google_cluster_data/input" ]] ||
+          ! compgen -G "$ROOT/testdata/google_cluster_data/input/*.csv" >/dev/null; then
+        echo "[table2] missing Google Cluster CSVs under testdata/google_cluster_data/input/" >&2
+        exit 2
+      fi
+      ;;
+    caida)
+      if [[ ! -d "$ROOT/testdata/caida_pcap/caida_txt" ]] ||
+          ! compgen -G "$ROOT/testdata/caida_pcap/caida_txt/*.txt" >/dev/null; then
+        echo "[table2] missing CAIDA text traces under testdata/caida_pcap/caida_txt/" >&2
+        exit 2
+      fi
+      ;;
+    vehicle)
+      if [[ ! -f "$ROOT/testdata/car_emission/my2015-2024-fuel-consumption-ratings.csv" ]]; then
+        echo "[table2] missing bundled vehicle-emissions CSV" >&2
+        exit 2
+      fi
+      ;;
+  esac
+}
+
+TABLE2_SPECS_VALUE="${TABLE2_SPECS:-google:8 caida:8 vehicle:4}"
+for spec in $TABLE2_SPECS_VALUE; do
+  IFS=: read -r ds _ <<< "$spec"
+  require_dataset "$ds"
+done
+
+echo "dataset,num_aggregators,epochs_on_critical_node,rocksdb_insert_ms_per_epoch,rocksdb_read_ms_per_epoch,fdb_write_ms_per_epoch,fdb_read_ms_per_query,aggregation_compute_ms_per_epoch,query_ms_per_query,agg_peak_rss_mb_per_node,query_peak_rss_mb" > "$OUT"
+
+emit_row() {
+  local dataset="$1"
+  python3 - "$MET" "$dataset" >> "$OUT" <<'PY'
+import json, sys
+rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
+agg = next(row for row in rows if row.get("task") == "aggregation")
+query = next(row for row in rows if row.get("task") == "query")
+n = int(agg["num_aggregators"])
+epochs = int(agg.get("critical_path_epochs") or 0)
+if epochs <= 0:
+    raise SystemExit(f"invalid critical-path epoch count: {agg}")
+ac = agg.get("components_s", {})
+qc = query.get("components_s", {})
+per_epoch_ms = lambda key: 1000.0 * float(ac.get(key, 0.0)) / epochs
+values = [
+    sys.argv[2], n, epochs,
+    per_epoch_ms("rocksdb_raw_insert"),
+    per_epoch_ms("rocksdb_raw_read"),
+    per_epoch_ms("fdb_write"),
+    1000.0 * float(qc.get("fdb_lookup", 0.0)),
+    per_epoch_ms("aggr_compute"),
+    1000.0 * float(query.get("total_time_s", 0.0)),
+    float(agg.get("per_node_host_rss_mb", 0.0)),
+    float(query.get("host_peak_rss_mb", 0.0)),
+]
+print(",".join(str(round(value, 3)) if isinstance(value, float) else str(value)
+               for value in values))
 PY
 }
 
-run_cell(){ # dataset-args... ; runs driver, returns
-  local log="$ROOT_DIR/results/_dist_driver.log"
-  # Keep orchestration progress visible.  Previously all output was hidden in
-  # this file, which made Kafka/FDB waits look like a hung experiment.
-  if ! env "$@" MODE=native bash "$DRV" 2>&1 | tee "$log"; then
-    echo "  cell FAILED: $*" >&2
-    tail -100 "$log" >&2
-    return 1
+# dataset:nodes. These are measurements on real machines, not inferred rows.
+for spec in $TABLE2_SPECS_VALUE; do
+  IFS=: read -r ds n <<< "$spec"
+  say "=== Table 2 Vanilla: $ds ($n aggregators) ==="
+  : > "$MET"
+  if ! env DATASET="$ds" NODES="$(nodes_for "$n")" MODE=native \
+      MEM_INTERVAL="${TABLE2_MEM_INTERVAL:-0.01}" bash "$DRV" 2>&1 | tee -a "$LOG"; then
+    say "  driver error for $ds"
+    exit 1
   fi
-}
-
-HDR="var,mode,agg_total_s,kafka_recv_s,rocksdb_raw_insert_s,rocksdb_raw_read_s,aggr_compute_s,fdb_write_s,query_total_s,fdb_lookup_s,deserialize_s,query_compute_s,agg_per_node_host_rss_mb,agg_cluster_host_rss_mb,agg_prover_rss_mb,query_rss_mb,query_prover_rss_mb"
-
-echo "=== Table 2: single-machine vanilla pipeline (vary keys/epoch) ==="
-C="$ROOT_DIR/results/table2_native.csv"; echo "$HDR" > "$C"
-for mode in ${TABLE2_MODES:-samples histogram cm}; do
-  for keys in ${TABLE2_KEYS:-256 512 1024 2048 4096}; do
-    echo "[table2] mode=$mode keys=$keys"; : > "$MET"
-    run_cell DATASET=synthetic SYNTH_MODE=$mode SYNTH_KEYS=$keys TOTAL_LOGS=16384 \
-      MEM_INTERVAL="${TABLE2_MEM_INTERVAL:-0.01}" NODES="node0"
-    emit "$C" "$keys" "$mode"
-  done
+  cp "$MET" "$OUTDIR/${ds}_native.jsonl"
+  emit_row "$ds"
+  say "  saved $OUTDIR/${ds}_native.jsonl"
 done
-echo "[table2] -> $C"
+say "=== Table 2 Vanilla done -> $OUT ==="
