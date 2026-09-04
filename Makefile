@@ -49,9 +49,10 @@ eval-fig7-query-zk: eval-zkvm-query-proofs
 eval-table2-native:
 	./scripts/eval/run_table2_native.sh
 
-# Paper Figure 5 and Table 3: distributed real-ZK pipeline.
+# Paper Figure 5 and Table 3: distributed real-ZK pipeline, exactly one
+# aggregator process per selected machine.
 eval-fig5-table3-zk:
-	FIG=5 ./scripts/eval/run_figures_zk.sh
+	RISC0_DEV_MODE=0 FIG=5 ./scripts/eval/run_figures_zk.sh
 
 # (3c) Figure 4 vehicle-emissions end-to-end in zkVM dev mode (guests execute,
 # STARK proof faked). Set KAFKA_HOST for the four-machine cluster.

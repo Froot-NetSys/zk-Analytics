@@ -9,7 +9,33 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT_DIR"
 DRV="$ROOT_DIR/scripts/distributed/run_distributed_baseline.sh"
 # Must match the driver's metrics path (run_distributed_baseline.sh writes here).
 MET="$ROOT_DIR/results/_dist_metrics.jsonl"
-nodes_for(){ local n="$1" out=""; for ((i=0;i<n;i++)); do out="$out node$i"; done; echo "${out# }"; }
+FIG5_MACHINES_VALUE="${FIG5_MACHINES:-node0 node1 node2 node3 node4 node5 node6 node7}"
+read -r -a FIG5_MACHINE_ARRAY <<< "$FIG5_MACHINES_VALUE"
+declare -A FIG5_MACHINE_SEEN=()
+for machine in "${FIG5_MACHINE_ARRAY[@]}"; do
+  if [[ -n "${FIG5_MACHINE_SEEN[$machine]:-}" ]]; then
+    echo "[fig5-zk] duplicate machine in FIG5_MACHINES: $machine" >&2
+    exit 2
+  fi
+  FIG5_MACHINE_SEEN[$machine]=1
+done
+
+# Figure 5 always uses exactly one aggregator process per selected machine.
+# A point with N aggregators selects the first N entries from FIG5_MACHINES.
+nodes_for() {
+  local n="$1"
+  if [[ ! "$n" =~ ^[1-9][0-9]*$ ]]; then
+    echo "[fig5-zk] invalid aggregator count: $n" >&2
+    return 2
+  fi
+  if (( n > ${#FIG5_MACHINE_ARRAY[@]} )); then
+    echo "[fig5-zk] requested $n aggregators but FIG5_MACHINES contains only ${#FIG5_MACHINE_ARRAY[@]} machines" >&2
+    return 2
+  fi
+  printf '%s' "${FIG5_MACHINE_ARRAY[0]}"
+  for ((i=1; i<n; i++)); do printf ' %s' "${FIG5_MACHINE_ARRAY[i]}"; done
+  printf '\n'
+}
 
 emit(){ local csv="$1" var="$2" mode="$3"
   python3 - "$MET" "$var" "$mode" >> "$csv" <<'PY'
@@ -43,7 +69,9 @@ PY
 
 run_cell(){
   local log="$ROOT_DIR/results/_dist_driver.log"
-  if ! env "$@" MODE=zk bash "$DRV" 2>&1 | tee "$log"; then
+  # This target is exclusively for real proofs; never inherit dev mode from
+  # the caller's shell.
+  if ! env "$@" MODE=zk RISC0_DEV_MODE=0 bash "$DRV" 2>&1 | tee "$log"; then
     echo "  cell FAILED: $*" >&2
     tail -100 "$log" >&2
     return 1
@@ -55,11 +83,27 @@ HDR="var,mode,agg_total_s,prove_s,verify_s,kafka_recv_s,rocksdb_raw_insert_s,fdb
 if [ "${FIG:-5}" = 5 ]; then
   echo "=== Figure 5 ZK: distributed aggregation (vary aggregators) ==="
   C="$ROOT_DIR/results/fig5_zk.csv"; echo "$HDR" > "$C"
-  # Full measured scaling matrix. Override FIG5_SPECS for a reduced smoke test.
-  for spec in ${FIG5_SPECS:-samples:1 samples:2 samples:4 samples:8 histogram:1 histogram:2 histogram:4 histogram:8 cm:1 cm:2 cm:4 cm:8}; do
+  # Build the full cross product by default. FIG5_SPECS remains an explicit
+  # point selector for reduced checks.
+  if [[ -n "${FIG5_SPECS:-}" ]]; then
+    specs="$FIG5_SPECS"
+  else
+    specs=""
+    for mode in ${FIG5_MODES:-samples histogram cm}; do
+      for n in ${FIG5_NUM_AGGREGATORS:-1 2 4 8}; do
+        specs="${specs:+$specs }$mode:$n"
+      done
+    done
+  fi
+  for spec in $specs; do
     IFS=: read -r mode N <<< "$spec"
-    echo "[fig5-zk] mode=$mode N=$N"; : > "$MET"
-    run_cell DATASET=synthetic SYNTH_MODE=$mode SYNTH_KEYS=4096 TOTAL_LOGS=131072 NODES="$(nodes_for $N)"
+    case "$mode" in samples|histogram|cm) ;; *)
+      echo "[fig5-zk] invalid mode '$mode'; expected samples, histogram, or cm" >&2
+      exit 2
+    esac
+    selected_nodes="$(nodes_for "$N")"
+    echo "[fig5-zk] mode=$mode aggregators=$N machines=[$selected_nodes]"; : > "$MET"
+    run_cell DATASET=synthetic SYNTH_MODE=$mode SYNTH_KEYS=4096 TOTAL_LOGS=131072 NODES="$selected_nodes"
     emit "$C" "$N" "$mode"
     cat "$C" | tail -1
   done

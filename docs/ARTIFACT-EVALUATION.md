@@ -346,11 +346,37 @@ KAFKA_HOST=<coordinator-private-address> make eval-fig5-table3-zk
 Expected output: `results/fig5_zk.csv`. By default it directly measures all 12
 combinations of three aggregation modes and 1, 2, 4, or 8 aggregators. Override
 `FIG5_SPECS` only for a reduced smoke test. Every row is produced by the
-requested number of real machines.
+requested number of real machines. The runner starts exactly one aggregator on
+each selected machine; it never places multiple aggregators on one machine.
 The CSV reports aggregation prove/verify time, Kafka/RocksDB/FDB components,
 host and prover RSS, proof size, and query costs. Compare aggregation time and
 speedup with Figure 5, and the component measurements with Table 3. Expect this
 run to take many hours.
+
+`FIG5_MACHINES` is the ordered pool of SSH host aliases. A point requesting `N`
+aggregators uses its first `N` entries. For example, run every mode on exactly
+four machines with:
+
+```bash
+KAFKA_HOST=<coordinator-private-address> \
+FIG5_MACHINES="node0 node1 node2 node3" \
+FIG5_NUM_AGGREGATORS=4 \
+make eval-fig5-table3-zk
+```
+
+Or run only one point on four chosen machines:
+
+```bash
+KAFKA_HOST=<coordinator-private-address> \
+FIG5_MACHINES="node0 node2 node5 node7" \
+FIG5_SPECS="histogram:4" \
+make eval-fig5-table3-zk
+```
+
+The first `FIG5_MACHINES` entry is the coordinator running locally; subsequent
+entries must be passwordless SSH aliases. The command rejects a requested
+aggregator count larger than the configured machine pool. This real-ZK target
+also forces `RISC0_DEV_MODE=0`, regardless of the caller's environment.
 
 #### Figure 4 — vehicle-emissions end-to-end pipeline
 
