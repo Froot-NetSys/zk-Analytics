@@ -164,6 +164,16 @@ exercise the analytics or proving paths.
 These two runs validate the core native analytics and zkVM execution paths
 without hours of proving.
 
+> **What dev mode means.** Setting `RISC0_DEV_MODE=1` makes RISC Zero execute
+> the guest program and produce its journal, but return a fake receipt without
+> any cryptographic proof. That receipt verifies only while dev mode is also
+> enabled and provides no security. Consequently, `dev_exec_ms` measures local
+> guest execution only; dev-mode `verify_ms` and `proof_bytes` must not be used
+> to evaluate proof generation, proof verification, or proof size. Dev mode
+> also runs here with one local aggregator, so it does not validate distributed
+> scaling. See the RISC Zero
+> [`DevModeProver` documentation](https://docs.rs/risc0-zkvm/latest/risc0_zkvm/struct.DevModeProver.html).
+
 ```bash
 # (a) Native (non-ZK) baseline — runs the exact aggregation/query analytics
 #     locally with one aggregator and regenerates CSVs under results/. About two
