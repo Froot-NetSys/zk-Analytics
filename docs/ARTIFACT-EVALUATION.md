@@ -216,7 +216,7 @@ shapes.
 
 ```bash
 BENCH_INPUT=synthetic cargo run -p data_source --bin data_source --release -- \
-  --streaming --bench --events 1000000 --key-cardinality 65536
+  --streaming --bench --events 1000000 --key-cardinality 4096
 ```
 
 Use the reported serial measurement to evaluate the paper's online
@@ -224,7 +224,7 @@ commitment-throughput claim:
 
 ```text
 hash_fn=sha256
-key_cardinality=65536
+key_cardinality=4096
 serial_ns_per_event=<measured value>
 ```
 
