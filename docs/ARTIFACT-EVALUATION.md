@@ -205,20 +205,18 @@ BENCH_INPUT=synthetic cargo run -p data_source --bin data_source --release -- \
   --streaming --bench --events 1000000 --key-mod 4096
 ```
 
-Expected terminal output includes these fields. For example, a 64-logical-CPU
-Intel Xeon Gold 6142 CloudLab node produced:
+Use the serial measurement to evaluate the paper's online commitment-throughput
+claim. For example, a CloudLab `c6420` node produced:
 
 ```text
 hash_fn=sha256
 serial_ns_per_event=148.059
-parallel_ns_per_event=12.875
-speedup=11.50x
 ```
 
 Convert nanoseconds per event to events per second and compare with the §7.2
 range of 1.6–6.7 million commitments/s. The example corresponds to 6.754
-million serial commitments/s and 77.670 million parallel commitments/s; the
-serial result meets (and slightly exceeds) the paper's reported range.
+million commitments/s, which meets (and slightly exceeds) the paper's reported
+range.
 
 #### Figure 6 — single-machine native aggregation
 

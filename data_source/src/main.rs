@@ -977,22 +977,7 @@ fn main() -> anyhow::Result<()> {
         }
         let serial_ns = serial_start.elapsed().as_nanos();
         let rss_kb_after_serial = proc_status_kb("VmRSS:");
-
-        // Timed run: per-key batch chains (parallel with rayon)
-        let parallel_start = std::time::Instant::now();
-        let items: Vec<(u64, &Vec<[u8; 23]>)> = events_by_key.iter().map(|(k, v)| (*k, v)).collect();
-        let parallel_results: Vec<(u64, [u8; 32])> = items
-            .par_iter()
-            .map(|(key_id, chunks)| {
-                let h = batch_chain_hash_sha256_23(prev_hash, chunks);
-                (*key_id, h)
-            })
-            .collect();
-        let parallel_ns = parallel_start.elapsed().as_nanos();
-        let rss_kb_after_parallel = proc_status_kb("VmRSS:");
-
-        // Prevent optimizer from removing computations
-        if final_hashes.len() != parallel_results.len() { println!("mismatch"); }
+        std::hint::black_box(&final_hashes);
 
         let proc_hwm_kb = proc_status_kb("VmHWM:");
 
@@ -1002,20 +987,11 @@ fn main() -> anyhow::Result<()> {
         println!("n_events={}", requested_events);
         println!("key_mod={}", key_mod);
         println!("n_chains={}", n_chains);
-        println!("parallel_chains={}", if parallel_chains { 1 } else { 0 });
 
         // Report serial timing
         println!("serial_ns={}", serial_ns);
         println!("serial_ms={}", serial_ns / 1_000_000);
         println!("serial_ns_per_event={:.3}", (serial_ns as f64) / (requested_events.max(1) as f64));
-
-        // Report parallel timing
-        println!("parallel_ns={}", parallel_ns);
-        println!("parallel_ms={}", parallel_ns / 1_000_000);
-        println!("parallel_ns_per_event={:.3}", (parallel_ns as f64) / (requested_events.max(1) as f64));
-
-        // Report speedup
-        println!("speedup={:.2}x", (serial_ns as f64) / (parallel_ns.max(1) as f64));
 
         // Memory breakdown (KB)
         if let Some(kb) = rss_kb_baseline {
@@ -1033,18 +1009,13 @@ fn main() -> anyhow::Result<()> {
         if let Some(kb) = rss_kb_after_serial {
             println!("rss_kb_after_serial={}", kb);
         }
-        if let Some(kb) = rss_kb_after_parallel {
-            println!("rss_kb_after_parallel={}", kb);
-        }
         if let Some(kb) = proc_hwm_kb {
             println!("rss_kb_hwm={}", kb);
         }
 
         // Computed deltas (SHA256-only memory)
         let hash_mem_serial_kb = rss_kb_after_serial.unwrap_or(0).saturating_sub(rss_kb_before_hash.unwrap_or(0));
-        let hash_mem_parallel_kb = rss_kb_after_parallel.unwrap_or(0).saturating_sub(rss_kb_before_hash.unwrap_or(0));
         println!("hash_mem_serial_kb={}", hash_mem_serial_kb);
-        println!("hash_mem_parallel_kb={}", hash_mem_parallel_kb);
 
         return Ok(());
     }
