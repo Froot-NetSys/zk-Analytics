@@ -25,8 +25,9 @@ table (Figures 4–7, Tables 1–3) to a concrete command. The main entry points
 Isolates the cost of **zkVM proof generation** from the cost of the analytics
 architecture itself, by running the *same* aggregation/query logic
 (`process_*_aggr`, `run_*_query`) natively on the host CPU with **no zkVM and no
-proofs**, on the same machine / input / epoch+batch sizes / aggregator counts /
-matched CPU cores as the zkVM experiments.
+proofs**, on the same machine / input / epoch+batch sizes / matched CPU cores as
+the zkVM experiments. The quick baseline measures one local aggregator; it does
+not infer distributed scaling.
 
 Components (all additive; the default proving path is unchanged):
 

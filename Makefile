@@ -10,8 +10,7 @@ eval-non-zk-baseline:
 	./scripts/eval/run_non_zk_baseline.sh
 
 # (2) zkVM aggregation re-run at 56 threads (all cores) to match the paper.
-# Multi-hour (CM ~3.5 h). Writes results/zkvm_aggregation_56threads.csv, which
-# the baseline merge then prefers over the 32-thread CSV.
+# Multi-hour (CM ~3.5 h). Writes results/zkvm_aggregation_56threads.csv.
 eval-zkvm-aggr-56:
 	./scripts/eval/run_zkvm_aggr_56.sh
 
@@ -20,9 +19,9 @@ eval-zkvm-aggr-56:
 eval-zkvm-query-proofs:
 	./scripts/eval/run_zkvm_query_proofs.sh
 
-# (3b) Run ALL planned zkVM experiments in dev mode (RISC0_DEV_MODE=1): guest
-# executed, no STARK proof. Fast (minutes). Writes results/zkvm_dev_*.csv with
-# the zkVM execution / witness-gen times for the cost breakdown.
+# (3b) Run local aggregation/query guest checks with one aggregator in dev mode
+# (RISC0_DEV_MODE=1): guests execute, but no STARK proof is created. Fast
+# (minutes). Writes results/zkvm_dev_*.csv.
 eval-zkvm-dev-mode:
 	./scripts/eval/run_zkvm_dev_mode.sh
 

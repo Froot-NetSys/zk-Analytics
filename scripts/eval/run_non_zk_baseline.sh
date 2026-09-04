@@ -4,7 +4,7 @@ set -euo pipefail
 # Camera-ready non-ZK native baseline (SIGCOMM #573 zk-Analytics).
 #
 # Reruns the NATIVE (no zkVM, no proof) aggregation + query analytics on the
-# same machine / input / epoch+batch sizes / aggregator counts / matched CPU
+# same machine / input / epoch+batch sizes / matched CPU
 # cores as the zkVM experiments, then merges with the existing measured zkVM
 # numbers to produce:
 #   results/non_zk_aggregation_baseline.csv
@@ -53,20 +53,19 @@ Q_RAW="results/_native_query_raw.txt"
 : > "$Q_RAW"
 
 echo "[non-zk] native AGGREGATION matrix (epoch=16384 logs, batch=8) ..."
-# Aggregator counts 1/2/4/8 -> 8/4/2/1 epochs handled by the busiest aggregator.
+# Measure one local aggregator handling the complete eight-epoch workload.
 for mode in samples histogram cm; do
-  for epochs in 8 4 2 1; do
-    # Always retain the 32-thread paper baseline, add the thread count matched
-    # to measured zkVM data, and include all locally available cores.  Sort -u
-    # avoids rerunning a count when two of these values are equal.
-    while read -r th; do
-      echo "### mode=$mode epochs=$epochs threads=$th" >> "$AGG_RAW"
-      "$BIN" --task aggregation --mode "$mode" \
-        --series 128 --samples-per-series 128 --batch 8 \
-        --epochs "$epochs" --threads "$th" --reps "$REPS_AGG" --seed "$SEED" \
-        >> "$AGG_RAW"
-    done < <(printf '%s\n' 32 "$THREADS_MATCHED" "$THREADS_MAX" | sort -n -u)
-  done
+  epochs=8
+  # Always retain the 32-thread paper baseline, add the thread count matched
+  # to measured zkVM data, and include all locally available cores.  Sort -u
+  # avoids rerunning a count when two of these values are equal.
+  while read -r th; do
+    echo "### mode=$mode epochs=$epochs threads=$th" >> "$AGG_RAW"
+    "$BIN" --task aggregation --mode "$mode" \
+      --series 128 --samples-per-series 128 --batch 8 \
+      --epochs "$epochs" --threads "$th" --reps "$REPS_AGG" --seed "$SEED" \
+      >> "$AGG_RAW"
+  done < <(printf '%s\n' 32 "$THREADS_MATCHED" "$THREADS_MAX" | sort -n -u)
 done
 
 echo "[non-zk] native QUERY matrix (8192 logs/epoch, epochs 1..256) ..."

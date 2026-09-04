@@ -26,7 +26,7 @@ The paper experiments are driven through the `Makefile` targets and the
 |-------------|--------------|
 | `eval-non-zk-baseline` | Native (non-ZK) aggregation/query micro-baseline + merged CSVs (seconds). |
 | `eval-non-zk-e2e` | Native end-to-end on the real Fig.4 datasets. |
-| `eval-zkvm-dev-mode` | All zkVM experiments in dev mode (guests executed, STARK faked) — minutes. |
+| `eval-zkvm-dev-mode` | Local single-aggregator zkVM guest checks in dev mode (guests executed, no STARK proof) — minutes. |
 | `eval-dev-zk-e2e` | Distributed end-to-end for all 3 datasets in zkVM **dev mode** (full cluster pipeline, guests executed, proofs faked) — minutes. Set `KAFKA_HOST` for your cluster; writes `results/e2e_dev_zk/<dataset>_dev_zk.jsonl`. |
 | `eval-zkvm-query-proofs` | Real zkVM query proofs at 1/2/4 epochs. |
 | `eval-zkvm-aggr-56` | Real zkVM aggregation re-run at 56 threads (hours). |

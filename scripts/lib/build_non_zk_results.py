@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Merge native (non-ZK) baseline measurements with the existing measured zkVM
-numbers and emit the camera-ready CSVs, plots, and summary.
+"""Emit native (non-ZK) baseline CSVs and measured zkVM comparisons.
 
 Native numbers come from the `native-baseline` binary (see
-`scripts/eval/run_non_zk_baseline.sh`). zkVM aggregation numbers are read from the
-existing measured CSVs under `bench_csv/`. zkVM query numbers are the
-measured proof-generation times reported in the paper (§7.1 / Fig. 4), since
-re-running the full 1..256-epoch query proof sweep is computationally
-infeasible (a single 256-epoch proof would take many hours).
+`scripts/eval/run_non_zk_baseline.sh`). The aggregation output contains only the
+measured single-aggregator workload; it does not extrapolate distributed
+results. zkVM query numbers are measured proof-generation times reported in the
+paper (§7.1 / Fig. 4), since re-running the full 1..256-epoch query proof sweep
+is computationally infeasible (a single 256-epoch proof would take many hours).
 
 All inputs are MEASURED values; nothing is synthesised. Provenance is recorded
 in a column of every CSV.
@@ -21,14 +20,11 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RESULTS = os.path.join(ROOT, "results")
 PLOTS = os.path.join(ROOT, "plots")
-BENCH = os.path.join(ROOT, "bench_csv")
 
-# Total synthetic workload (matches §7.2 distributed aggregation):
+# Complete synthetic workload measured by the local aggregator:
 EPOCH_LOGS = 16384          # epoch size (logs)
 TOTAL_LOGS = 131072         # total logs -> 8 epochs
 TOTAL_EPOCHS = TOTAL_LOGS // EPOCH_LOGS  # 8
-# Aggregator count -> epochs handled by the busiest (max) aggregator.
-AGG_COUNTS = [1, 2, 4, 8]   # -> 8, 4, 2, 1 epochs each
 
 MODE_LABEL = {
     "samples": "Hash Table of Raw Logs",
@@ -55,46 +51,6 @@ def parse_blocks(path):
     if cur:
         blocks.append(cur)
     return blocks
-
-
-def read_zkvm_aggr(mode):
-    """Return measured per-epoch (epoch_events=16384) zkVM numbers for `mode`.
-
-    Prefers the 56-thread re-run (results/zkvm_aggregation_56threads.csv) to
-    match the paper's all-cores setup; falls back to the existing 32-thread
-    benchmark CSV if the 56-thread run is not present yet.
-    """
-    p56 = os.path.join(RESULTS, "zkvm_aggregation_56threads.csv")
-    if os.path.exists(p56):
-        with open(p56) as f:
-            for row in csv.DictReader(f):
-                if (row.get("mode") == mode
-                        and row.get("epoch_events") == str(EPOCH_LOGS)
-                        and row.get("prove_ms_total")):
-                    rss = row.get("time_max_rss_kb") or row.get("proc_hwm_kb")
-                    return {
-                        "prove_ms": float(row["prove_ms_total"]),
-                        "verify_ms": float(row["verify_ms_total"]),
-                        "rss_kb": float(rss),
-                        "threads": row.get("threads", "56"),
-                        "src": "zkvm_aggregation_56threads.csv (measured, 56 threads)",
-                    }
-    path = os.path.join(BENCH, f"bench_risc0_aggregator_{mode}.csv")
-    if os.path.exists(path):
-        with open(path) as f:
-            for row in csv.DictReader(f):
-                if row.get("epoch_events") == str(EPOCH_LOGS):
-                    return {
-                        "prove_ms": float(row["prove_ms_total"]),
-                        "verify_ms": float(row["verify_ms_total"]),
-                        "rss_kb": float(row["time_max_rss_kb"]),
-                        "threads": row["threads"],
-                        "src": os.path.basename(path) + " (measured, 32 threads)",
-                    }
-    # No measured zkVM aggregation data present. This repo ships no raw results,
-    # so the native baseline still builds and the zkVM columns are left blank.
-    # Run `make eval-zkvm-aggr-56` (real proofs) to populate measured numbers.
-    return None
 
 
 # zkVM query proof-generation, MEASURED (paper §7.1 / Fig. 4). Each is the full
@@ -150,16 +106,15 @@ def build_aggregation_csv():
         key = (b["mode"], int(b["epochs"]), int(b["threads"]))
         nat[key] = b
 
-    zk = {m: read_zkvm_aggr(m) for m in ("samples", "histogram", "cm")}
-
     out = os.path.join(RESULTS, "non_zk_aggregation_baseline.csv")
     rows = []
-    # Matched cores = the thread count of the zkVM aggregation data we compare
-    # against (56 when the 56-thread re-run is present, else 32).
-    matched = 56 if any(z and z["threads"] == "56" for z in zk.values()) else 32
+    # Use a locally measured 56-thread row when available, otherwise the
+    # baseline's required 32-thread row. No aggregator-count scaling is inferred.
+    matched = 56 if all((m, TOTAL_EPOCHS, 56) in nat
+                        for m in ("samples", "histogram", "cm")) else 32
     header = [
-        "aggregation_type", "num_aggregators", "epochs_per_max_aggregator",
-        "logs_per_max_aggregator", "threads_matched",
+        "aggregation_type", "num_aggregators", "epochs", "logs",
+        "threads_matched",
         "native_single_thread_s", "native_matched_cores_s", "native_32core_s",
         "zkvm_prove_s", "zkvm_verify_s",
         "slowdown_single_thread", "slowdown_matched_cores",
@@ -167,48 +122,26 @@ def build_aggregation_csv():
         "native_threads_matched", "zkvm_threads", "provenance",
     ]
     for mode in ("samples", "histogram", "cm"):
-        z = zk[mode]
-        for nagg in AGG_COUNTS:
-            epochs = TOTAL_EPOCHS // nagg
-            n32 = nat[(mode, epochs, 32)]
-            nm = nat[(mode, epochs, matched)]
-            nat_single_ms = float(nm["native_single_thread_ms"])
-            nat_matched_ms = float(nm["native_max_core_ms"])       # matched-core run
-            nat_32_ms = float(n32["native_max_core_ms"])           # 32-core (debug)
-            # Use the peak across every locally measured thread count.  A
-            # quick evaluation must not require a 56-thread row on machines
-            # whose all-core count differs from the paper's 56-core host.
-            nat_mem_mb = max(
-                float(row["peak_rss_kb"])
-                for (row_mode, row_epochs, _), row in nat.items()
-                if row_mode == mode and row_epochs == epochs
-            ) / 1024.0
-            if z is None:
-                # native-only row: no measured zkVM data to compare against.
-                rows.append([
-                    MODE_LABEL[mode], nagg, epochs, epochs * EPOCH_LOGS, matched,
-                    f"{nat_single_ms/1e3:.6f}", f"{nat_matched_ms/1e3:.6f}",
-                    f"{nat_32_ms/1e3:.6f}",
-                    "", "", "", "",
-                    f"{nat_mem_mb:.2f}", "", "",
-                    matched, "",
-                    "native only; no measured zkVM data (run make eval-zkvm-aggr-56)",
-                ])
-                continue
-            zk_prove_ms = z["prove_ms"] * epochs
-            zk_verify_ms = z["verify_ms"] * epochs
-            zk_mem_mb = z["rss_kb"] / 1024.0
-            rows.append([
-                MODE_LABEL[mode], nagg, epochs, epochs * EPOCH_LOGS, matched,
-                f"{nat_single_ms/1e3:.6f}", f"{nat_matched_ms/1e3:.6f}",
-                f"{nat_32_ms/1e3:.6f}",
-                f"{zk_prove_ms/1e3:.3f}", f"{zk_verify_ms/1e3:.3f}",
-                f"{zk_prove_ms/nat_single_ms:.1f}",
-                f"{zk_prove_ms/nat_matched_ms:.1f}",
-                f"{nat_mem_mb:.2f}", f"{zk_mem_mb:.1f}",
-                f"{zk_mem_mb/nat_mem_mb:.1f}",
-                matched, z["threads"], z["src"],
-            ])
+        epochs = TOTAL_EPOCHS
+        n32 = nat[(mode, epochs, 32)]
+        nm = nat[(mode, epochs, matched)]
+        nat_single_ms = float(nm["native_single_thread_ms"])
+        nat_matched_ms = float(nm["native_max_core_ms"])
+        nat_32_ms = float(n32["native_max_core_ms"])
+        nat_mem_mb = max(
+            float(row["peak_rss_kb"])
+            for (row_mode, row_epochs, _), row in nat.items()
+            if row_mode == mode and row_epochs == epochs
+        ) / 1024.0
+        rows.append([
+            MODE_LABEL[mode], 1, epochs, epochs * EPOCH_LOGS, matched,
+            f"{nat_single_ms/1e3:.6f}", f"{nat_matched_ms/1e3:.6f}",
+            f"{nat_32_ms/1e3:.6f}",
+            "", "", "", "",
+            f"{nat_mem_mb:.2f}", "", "",
+            matched, "",
+            "measured locally; one aggregator; no distributed scaling inferred",
+        ])
     with open(out, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(header)
@@ -378,20 +311,20 @@ def make_plots(agg_rows, query_rows, breakdown_rows):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    # --- Aggregation: native vs zkVM time, per mode (num_aggregators=8) ---
-    agg8 = [next(x for x in agg_rows if x[0] == MODE_LABEL[m] and x[1] == 8)
+    # --- Aggregation: native vs zkVM time, per mode (one aggregator) ---
+    agg1 = [next(x for x in agg_rows if x[0] == MODE_LABEL[m] and x[1] == 1)
             for m in ("samples", "histogram", "cm")]
-    if all(r[8] not in ("", None) for r in agg8):
+    if all(r[8] not in ("", None) for r in agg1):
         modes = [MODE_LABEL[m] for m in ("samples", "histogram", "cm")]
-        nat = [float(r[5]) for r in agg8]
-        zk = [float(r[8]) for r in agg8]
+        nat = [float(r[5]) for r in agg1]
+        zk = [float(r[8]) for r in agg1]
         fig, ax = plt.subplots(figsize=(7, 4))
         x = range(len(modes))
         ax.bar([i - 0.2 for i in x], nat, 0.4, label="Native (non-ZK)")
         ax.bar([i + 0.2 for i in x], zk, 0.4, label="zkVM proof gen")
         ax.set_yscale("log")
         ax.set_ylabel("Time (s, log scale)")
-        ax.set_title("Aggregation: native vs zkVM (1 epoch / 16,384 logs, 8 aggregators)")
+        ax.set_title("Aggregation: native vs zkVM (one local aggregator)")
         ax.set_xticks(list(x))
         ax.set_xticklabels(["Hash Table", "Histogram", "CMS"])
         ax.legend()
@@ -473,10 +406,10 @@ def build_summary(agg_rows, query_rows, breakdown_rows):
                     "`non_zk_query_baseline.csv` for per-row provenance and values.\n")
         print("wrote", out, "(partial measured-data coverage)")
         return
-    # Headline 4-row table at num_aggregators=8 (paper's headline config).
+    # Headline table for one measured local aggregator.
     headline = []
     for m in ("samples", "histogram", "cm"):
-        r = next(x for x in agg_rows if x[0] == MODE_LABEL[m] and x[1] == 8)
+        r = next(x for x in agg_rows if x[0] == MODE_LABEL[m] and x[1] == 1)
         headline.append((
             f"Aggregation ({ {'samples':'Hash Table','histogram':'Histogram','cm':'CMS'}[m] })",
             float(r[5]), float(r[8]), float(r[11]),  # nat_single, zk_prove, slowdown_matched
@@ -499,10 +432,10 @@ def build_summary(agg_rows, query_rows, breakdown_rows):
     lines.append("This isolates the cost of zkVM proof generation from the cost of "
                  "the analytics architecture itself by running the **same** "
                  "aggregation/query logic natively (no zkVM, no proofs) on the "
-                 "**same machine, same input, same epoch/batch sizes, same "
-                 "aggregator counts, and matched CPU cores**.\n")
+                 "**same machine, same input, same epoch/batch sizes, and "
+                 "matched CPU cores**.\n")
 
-    lines.append("## Headline (8 aggregators, matched hardware)\n")
+    lines.append("## Headline (one aggregator, matched hardware)\n")
     lines.append("| Task | Native Analytics | zk-Analytics | Slowdown |")
     lines.append("|------|------------------|--------------|----------|")
     for name, nat_s, zk_s, slow_matched, slow_single in headline:
@@ -510,11 +443,11 @@ def build_summary(agg_rows, query_rows, breakdown_rows):
                      f"{slow_single:,.0f}x |")
     lines.append(f"| Query (hash-table global sum) | {fmt_s(q_nat)} s | "
                  f"{fmt_s(q_zk)} s | {q_slow:,.0f}x |")
-    lines.append("\n*Same machine (Intel Xeon Gold 5512U, 56 cores / 128 GB), "
+    lines.append("\n*Same machine (CloudLab c6420), "
                  "same synthetic input, same 16,384-log epochs, same 8-log commit "
                  "batches, same 32-thread budget as the zkVM runs. Aggregation rows: "
-                 "one 16,384-log epoch per aggregator (131,072 logs across 8 "
-                 "aggregators). Query row: 131,072 logs (16 epochs of 8,192). Native "
+                 "one local aggregator processing eight 16,384-log epochs (131,072 "
+                 "logs). Query row: 131,072 logs (16 epochs of 8,192). Native "
                  "time is single-thread — per-epoch aggregation/query is sequential, "
                  "so the matched 32 cores are available but not needed (matched- and "
                  "max-core variants are in the CSV). zk-Analytics = measured RISC Zero "
@@ -610,9 +543,6 @@ def build_summary(agg_rows, query_rows, breakdown_rows):
     lines.append("## Provenance\n")
     lines.append("- Native numbers: measured by `native_baseline` "
                  "(`make eval-non-zk-baseline`).")
-    lines.append("- zkVM aggregation numbers: measured, "
-                 "`bench_csv/bench_risc0_aggregator_{cm,histogram,samples}.csv` "
-                 "(epoch_events=16,384, 32 threads).")
     lines.append("- zkVM query proof-gen numbers: measured, paper §7.1 / Fig. 4 "
                  "(re-running the full real-proof sweep is infeasible).")
     lines.append("- zkVM execution times (all aggregation + query experiments, incl. "
@@ -637,9 +567,8 @@ def main():
         print("WARN: plotting failed:", e, file=sys.stderr)
     try:
         build_summary(agg_rows, query_rows, breakdown_rows)
-    except Exception as e:  # derived convenience; needs measured zkVM data
-        print("WARN: summary skipped (no measured zkVM data — run "
-              "make eval-zkvm-aggr-56):", e, file=sys.stderr)
+    except Exception as e:  # derived convenience
+        print("WARN: summary skipped:", e, file=sys.stderr)
 
 
 if __name__ == "__main__":

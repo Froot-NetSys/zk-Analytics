@@ -41,8 +41,6 @@ immutable release/archive.
 
 ## Hardware requirements
 
-**Full reproduction requires specific hardware:**
-
 - **Short functional evaluation:** one x86-64 machine with 8 GB RAM and 10 GB
   free disk. Native and dev-mode checks run on one machine, but do not validate
   distributed scaling.
@@ -168,13 +166,13 @@ without hours of proving.
 
 ```bash
 # (a) Native (non-ZK) baseline — runs the exact aggregation/query analytics
-#     natively and regenerates CSVs under results/. About two minutes on a
-#     64-core machine after compilation; a cold build takes longer.
+#     locally with one aggregator and regenerates CSVs under results/. About two
+#     minutes on a 64-core machine after compilation; a cold build takes longer.
 make eval-non-zk-baseline
 
-# (b) zkVM pipeline in DEV MODE (RISC0_DEV_MODE=1): guests are executed and the
-#     witness is generated, but no STARK proof. Exercises the real proving path
-#     end-to-end in minutes. Writes results/zkvm_dev_*.csv.
+# (b) Local zkVM guest checks in DEV MODE (RISC0_DEV_MODE=1): the aggregation
+#     and query guests execute and witnesses are generated, but no STARK proof
+#     is created. Uses one aggregator and writes results/zkvm_dev_*.csv.
 make eval-zkvm-dev-mode
 ```
 
