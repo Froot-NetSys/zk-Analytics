@@ -59,7 +59,7 @@ def parse_blocks(path):
 # query proving was not separately RSS-instrumented, so we reuse the measured
 # aggregation-class prover memory as a conservative same-order estimate.
 ZKVM_QUERY = {
-    ("samples", "global_sum"): {
+    ("samples", "samples_sum"): {
         "epochs": 16, "prove_ms": 524600.0, "verify_ms": 37.0,
         "src": "paper Fig.4(a) Google cluster, sum over hash table",
     },
@@ -166,16 +166,16 @@ def build_query_csv():
     ]
     rows = []
     QUERY_LABEL = {
-        "global_sum": "Global sum",
+        "samples_sum": "Samples sum",
         "per_key_sum": "Per-key sum",
-        "topk_hash": "Top-K (hash table)",
+        "samples_sum_topk": "Samples sum Top-K",
         "cm_topk": "Top-K / frequency (CM)",
         "cm_estimate": "Point frequency (CM)",
         "hist_percentile": "Percentile (histogram)",
     }
     order = [
-        ("samples", "global_sum"), ("samples", "per_key_sum"),
-        ("samples", "topk_hash"), ("cm", "cm_topk"),
+        ("samples", "samples_sum"), ("samples", "per_key_sum"),
+        ("samples", "samples_sum_topk"), ("cm", "cm_topk"),
         ("cm", "cm_estimate"), ("histogram", "hist_percentile"),
     ]
     for (et, qk) in order:
@@ -286,7 +286,7 @@ def build_breakdown_csv(agg_rows, query_rows):
     dev_agg = read_dev_aggregation()
     dev_q = read_dev_query()
     dev_agg_s = dev_agg.get(("cm", 8))            # full 131,072-log workload
-    dev_q_s = dev_q.get(("samples", "global_sum", 16))
+    dev_q_s = dev_q.get(("samples", "samples_sum", 16))
     dev_agg_str = f"{dev_agg_s/1e3:.4f}" if dev_agg_s else ""
     dev_q_str = f"{dev_q_s/1e3:.4f}" if dev_q_s else ""
 

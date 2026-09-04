@@ -27,8 +27,8 @@ echo "epoch_type,query,num_epochs,events_per_epoch,keys,prove_ms,verify_ms,max_r
 # Map bench_queries' "query_type" string -> (epoch_type, our query key)
 map_query() {
   case "$1" in
-    samples/sum)      echo "samples global_sum" ;;
-    samples/sum_topk) echo "samples topk_hash" ;;
+    samples/sum)      echo "samples samples_sum" ;;
+    samples/sum_topk) echo "samples samples_sum_topk" ;;
     samples/sum_key)  echo "samples per_key_sum" ;;
     cm/topk)          echo "cm cm_topk" ;;
     cm/estimate)      echo "cm cm_estimate" ;;

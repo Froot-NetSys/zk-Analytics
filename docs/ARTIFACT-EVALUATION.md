@@ -324,8 +324,8 @@ the two 1-epoch samples receipts:
 
 ```text
 epoch_type,query,num_epochs,events_per_epoch,keys,prove_ms,verify_ms,max_rss_kb,proof_bytes
-samples,global_sum,1,8192,1024,698549,32,9618860,224050
-samples,topk_hash,1,8192,1024,782927,33,9618860,224202
+samples,samples_sum,1,8192,1024,698549,32,9618860,224050
+samples,samples_sum_topk,1,8192,1024,782927,33,9618860,224202
 ```
 
 These rows support the constant, millisecond-scale verification and compact

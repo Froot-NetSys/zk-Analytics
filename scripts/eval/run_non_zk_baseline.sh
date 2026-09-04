@@ -71,7 +71,7 @@ done
 echo "[non-zk] native QUERY matrix (8192 logs/epoch, epochs 1..256) ..."
 # epoch_type:query:series:samples_per_series   (series*sps == 8192 logs/epoch)
 for cfg in \
-  samples:global_sum:1024:8 samples:per_key_sum:1024:8 samples:topk_hash:1024:8 \
+  samples:samples_sum:1024:8 samples:per_key_sum:1024:8 samples:samples_sum_topk:1024:8 \
   cm:cm_topk:8192:1 cm:cm_estimate:8192:1 histogram:hist_percentile:1024:8 ; do
   IFS=: read -r et qk series sps <<< "$cfg"
   for ne in 1 2 4 8 16 32 64 128 256; do
