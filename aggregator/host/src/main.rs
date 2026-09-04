@@ -457,12 +457,12 @@ fn build_batch_inputs(
 fn proc_status_kb(field: &str) -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     for line in status.lines() {
-        let line = line.strip_prefix(field)?;
-        let kb = line
-            .split_whitespace()
-            .next()
-            .and_then(|v| v.parse::<u64>().ok())?;
-        return Some(kb);
+        if let Some(value) = line.strip_prefix(field) {
+            return value
+                .split_whitespace()
+                .next()
+                .and_then(|v| v.parse::<u64>().ok());
+        }
     }
     None
 }
