@@ -201,25 +201,25 @@ reviewers may select a subset.
 #### §7.2 — online commitment throughput
 
 This single-machine experiment needs one CPU core and synthetic input. It takes
-minutes. Sweep `--key-mod` or `--events` to evaluate additional input shapes.
+minutes. Sweep `--key-cardinality` or `--events` to evaluate additional input
+shapes.
 
 ```bash
 BENCH_INPUT=synthetic cargo run -p data_source --bin data_source --release -- \
-  --streaming --bench --events 1000000 --key-mod 4096
+  --streaming --bench --events 1000000 --key-cardinality 65536
 ```
 
-Use the serial measurement to evaluate the paper's online commitment-throughput
-claim. For example, a CloudLab `c6420` node produced:
+Use the reported serial measurement to evaluate the paper's online
+commitment-throughput claim:
 
 ```text
 hash_fn=sha256
-serial_ns_per_event=148.059
+key_cardinality=65536
+serial_ns_per_event=<measured value>
 ```
 
 Convert nanoseconds per event to events per second and compare with the §7.2
-range of 1.6–6.7 million commitments/s. The example corresponds to 6.754
-million commitments/s, which meets (and slightly exceeds) the paper's reported
-range.
+range of 1.6–6.7 million commitments/s.
 
 #### Figure 6 — single-machine native aggregation
 

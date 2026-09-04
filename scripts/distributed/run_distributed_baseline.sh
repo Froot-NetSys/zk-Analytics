@@ -177,7 +177,7 @@ if [ "$BENCH_INPUT" = synthetic ]; then
   for ((s=0;s<NUM_AGGREGATORS;s++)); do
     env BENCH_INPUT=synthetic KAFKA_BROKERS="$KAFKA_BROKERS" KAFKA_TOPIC="$KAFKA_TOPIC" \
       NUM_AGGREGATORS="$NUM_AGGREGATORS" SOURCE_ID="$s" \
-      "$LBIN/kafka-producer" --events "$per" --commit-batch-size "$COMMIT_BATCH_SIZE" --key-mod "$kps" \
+      "$LBIN/kafka-producer" --events "$per" --commit-batch-size "$COMMIT_BATCH_SIZE" --key-cardinality "$kps" \
       > "$LOGDIR/producer_$s.log" 2>&1 &
     pp+=($!)
   done

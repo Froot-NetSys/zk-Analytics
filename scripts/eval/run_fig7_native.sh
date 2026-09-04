@@ -48,7 +48,7 @@ for cfg in ${FIG7_CONFIGS:-samples:samples:samples_sum:1024 histogram:histogram:
   # produce N_EPOCHS*EPOCH_LOGS synthetic logs
   total=$((N_EPOCHS*EPOCH_LOGS))
   BENCH_INPUT=synthetic KAFKA_BROKERS=$KAFKA_BROKERS KAFKA_TOPIC=$TOPIC NUM_AGGREGATORS=1 SOURCE_ID=0 \
-    "$LBIN/kafka-producer" --events $total --commit-batch-size $COMMIT --key-mod $keys > /tmp/${TAG}_prod.log 2>&1
+    "$LBIN/kafka-producer" --events $total --commit-batch-size $COMMIT --key-cardinality $keys > /tmp/${TAG}_prod.log 2>&1
   sleep 5
   kill -TERM "$CPID" 2>/dev/null || true
   wait "$CPID" 2>/dev/null || true

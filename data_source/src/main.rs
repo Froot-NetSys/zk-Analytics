@@ -831,7 +831,7 @@ impl BenchInputSource {
         &mut self,
         rng: &mut rand::rngs::StdRng,
         value_zipf: Option<&ZipfSampler>,
-        key_mod: u64,
+        key_cardinality: u64,
         value_mod: u32,
     ) -> anyhow::Result<Option<BenchEvent>> {
         match self {
@@ -840,8 +840,8 @@ impl BenchInputSource {
             Self::Synthetic(s) => {
                 let ts = now_ts();  // Use current system time
                 // Round-robin through keys (matches generate_epoch_batches)
-                let key_num = if key_mod > 0 {
-                    let k = s.current_key % key_mod;
+                let key_num = if key_cardinality > 0 {
+                    let k = s.current_key % key_cardinality;
                     s.current_key = s.current_key.wrapping_add(1);
                     k
                 } else {
@@ -893,7 +893,7 @@ fn main() -> anyhow::Result<()> {
     let requested_events = parse_arg_u64("--events", 1_000);
     let mut batch_size = parse_arg_u64("--batch-size", requested_events).max(1);
     let warmup_batches = parse_arg_u64("--warmup-batches", 0);
-    let key_mod = parse_arg_u64("--key-mod", 1_000).max(1);
+    let key_cardinality = parse_arg_u64("--key-cardinality", 1_000).max(1);
     let value_mod = parse_arg_u64("--value-mod", 10_000).max(1) as u32;
     let seed = parse_arg_u64("--seed", 0x5EED);
     // Timestamp is generated from current system time when event is created
@@ -925,7 +925,7 @@ fn main() -> anyhow::Result<()> {
         // SHA-256 input: 32-byte prev_hash + 23-byte log = 55 bytes (fits in one 64-byte block)
         let mut events: Vec<(u64, [u8; 23])> = Vec::with_capacity(requested_events as usize);
         for _ in 0..requested_events {
-            let key_id = rng.next_u64() % key_mod;
+            let key_id = rng.next_u64() % key_cardinality;
             let value: u32 = if let Some(ref zipf) = value_zipf {
                 zipf.sample_u64(&mut rng) as u32
             } else {
@@ -985,7 +985,7 @@ fn main() -> anyhow::Result<()> {
         println!("mode=streaming");
         println!("hash_fn=sha256");
         println!("n_events={}", requested_events);
-        println!("key_mod={}", key_mod);
+        println!("key_cardinality={}", key_cardinality);
         println!("n_chains={}", n_chains);
 
         // Report serial timing
@@ -1071,7 +1071,7 @@ fn main() -> anyhow::Result<()> {
         let next = source.next_event(
             &mut rng,
             value_zipf.as_ref(),
-            key_mod,
+            key_cardinality,
             value_mod,
         )?;
         let Some(ev) = next else {
@@ -1197,7 +1197,7 @@ fn main() -> anyhow::Result<()> {
         println!("timed_events={}", timed_events);
         println!("host_hash_ms={}", host_hash_ms);
         println!("parallel_chains={}", if parallel_chains { 1 } else { 0 });
-        println!("key_mod={}", key_mod);
+        println!("key_cardinality={}", key_cardinality);
         println!("n_chains={}", unique_keys.len());
         println!("hash_ns_total={}", hash_ns_total);
         println!("hash_ms_total={}", hash_ns_total / 1_000_000);

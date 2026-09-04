@@ -44,7 +44,7 @@
 //! - `--series N`: Number of distinct keys per source (default: 1000)
 //! - `--samples-per-series N`: Samples per key (used with --series to compute total events)
 //! - `--source-id N`: Source identifier for synthetic data (default: 0)
-//! - `--key-mod N`: Maximum number of unique keys per source (default: 1000)
+//! - `--key-cardinality N`: Maximum number of unique keys per source (default: 1000)
 //! - `--value-mod N`: Value modulo for synthetic events (default: 10000)
 //! - `--seed N`: Random seed (default: 0x5EED)
 //! - `--rate N`: Events per second rate limit (0 = unlimited)
@@ -99,12 +99,12 @@ async fn main() -> Result<()> {
     let rate_limit = parse_arg_u64("--rate", 0);
     let parallel_producers = parse_arg_u64("--parallel-producers", env_u64("PARALLEL_PRODUCERS", 1)).max(1) as u32;
 
-    // Support both --series (alias) and --key-mod
+    // Support both --series (alias) and --key-cardinality.
     let series = parse_arg_u64("--series", 0);
-    let key_mod = if series > 0 {
+    let key_cardinality = if series > 0 {
         series
     } else {
-        parse_arg_u64("--key-mod", 1000).max(1)
+        parse_arg_u64("--key-cardinality", 1000).max(1)
     };
 
     // Support --samples-per-series to compute total events
@@ -194,7 +194,7 @@ async fn main() -> Result<()> {
         "synthetic" => {
             eprintln!(
                 "[kafka-producer] synthetic mode: keys_per_source={} value_mod={}",
-                key_mod, value_mod
+                key_cardinality, value_mod
             );
 
             // Synthetic mode: generate events with source_id in key
@@ -222,7 +222,7 @@ async fn main() -> Result<()> {
                     events_for_current_key += 1;
                     if events_for_current_key >= cbs {
                         events_for_current_key = 0;
-                        current_key = (current_key + 1) % key_mod;
+                        current_key = (current_key + 1) % key_cardinality;
                     }
                 }
 

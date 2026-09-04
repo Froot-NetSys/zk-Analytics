@@ -16,7 +16,7 @@ run_one(){ # keys tag -> echoes aggr_compute_ms
   docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic "$TOPIC" --partitions 1 --replication-factor 1 >/dev/null 2>&1
   KAFKA_BROKERS=$KB KAFKA_TOPIC=$TOPIC KAFKA_GROUP_ID=cg_$TAG KAFKA_PARTITION_ID=0 RAW_DB_PATH=$RAW EPOCH_BATCH_THRESHOLD=2048 EPOCH_TIMEOUT_MS=600000 "$B/kafka-consumer" > /tmp/${TAG}_c.log 2>&1 & local CPID=$!
   sleep 2
-  BENCH_INPUT=synthetic KAFKA_BROKERS=$KB KAFKA_TOPIC=$TOPIC NUM_AGGREGATORS=1 SOURCE_ID=0 "$PROD" --events 16384 --commit-batch-size 8 --key-mod "$keys" > /tmp/${TAG}_p.log 2>&1
+  BENCH_INPUT=synthetic KAFKA_BROKERS=$KB KAFKA_TOPIC=$TOPIC NUM_AGGREGATORS=1 SOURCE_ID=0 "$PROD" --events 16384 --commit-batch-size 8 --key-cardinality "$keys" > /tmp/${TAG}_p.log 2>&1
   sleep 4; kill -TERM $CPID 2>/dev/null; wait $CPID 2>/dev/null
   E2E_TIMING=1 NO_ZKVM_PROOF=1 AGGR_PIPELINE=rocksdb RAW_ROCKSDB_PATH=$RAW AGG_ROCKSDB_PATH=$AGG AGGREGATOR_ID=0 FDB_CLUSTER_FILE=$FC FDB_SUBSPACE=$SUB AGGR_IDLE_TIMEOUT_SECS=12 RAYON_NUM_THREADS=56 "$B/aggregator" --rocksdb --mode cm --threads 56 > /tmp/${TAG}_a.log 2>&1
   grep -aoE "aggr_compute_ms=[0-9.]+" /tmp/${TAG}_a.log | tail -1 | cut -d= -f2
