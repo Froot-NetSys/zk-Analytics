@@ -10,9 +10,13 @@ set -uo pipefail
 # time or proving memory
 # (those come from the existing measured data: bench_csv + paper Fig. 4).
 #
+# The dev CSV schemas intentionally match their real-proof counterparts exactly.
+# In dev mode, prove_ms/prove_ms_total measure guest execution. proof_bytes and
+# verify_ms are written as zero because no cryptographic proof exists or is
+# cryptographically verified; journal_bytes remains the real public output size.
 # Writes:
-#   results/zkvm_dev_aggregation.csv   (Figure 6 aggregation shape)
-#   results/zkvm_dev_query.csv         (Fig.7 query shapes)
+#   results/zkvm_dev_aggregation.csv   (same schema as the Figure 6 ZK CSV)
+#   results/zkvm_dev_query.csv         (same schema as the Figure 7 ZK CSV)
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
@@ -26,6 +30,7 @@ RUN_QUERY="${RUN_QUERY:-1}"
 FIG6_EPOCH_EVENTS="${FIG6_EPOCH_EVENTS:-16384}"
 FIG6_KEYS="${FIG6_KEYS:-256 512 1024 2048 4096}"
 FIG6_MODES="${FIG6_MODES:-samples histogram cm}"
+EPOCH_LIST="${EPOCH_LIST:-1 2 4 8 16}"
 
 if [ "$RUN_AGGREGATION" = 1 ]; then
   echo "[dev] building aggregator benchmark ..."
@@ -41,7 +46,7 @@ fi
 # -------- Aggregation (dev mode): Figure 6, one 16,384-log epoch ------------
 if [ "$RUN_AGGREGATION" = 1 ]; then
 AGG_OUT="${FIG6_DEV_OUT:-$ROOT_DIR/results/zkvm_dev_aggregation.csv}"
-echo "mode,unique_keys,events_per_key,num_aggregators,epochs,epoch_events,dev_exec_ms,verify_ms,dev_rss_kb" > "$AGG_OUT"
+echo "mode,unique_keys,events_per_key,threads,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,time_max_rss_kb,proof_bytes,journal_bytes" > "$AGG_OUT"
 for mode in $FIG6_MODES; do
   for unique_keys in $FIG6_KEYS; do
   if (( FIG6_EPOCH_EVENTS % unique_keys != 0 )); then
@@ -58,12 +63,15 @@ for mode in $FIG6_MODES; do
       --samples-per-series "$events_per_key" --seed "$SEED" --threads "$THREADS" \
     > "$log" 2>&1
   pm=$(grep -oE '^prove_ms_total=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
-  vm=$(grep -oE '^verify_ms_total=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
+  hwm=$(grep -oE '^proc_hwm_kb=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
   ee=$(grep -oE '^epoch_events=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
-  rss=$(grep -oE 'Maximum resident set size \(kbytes\): [0-9]+' "$log" | grep -oE '[0-9]+$' | head -1 || true)
-  printf '%s,%s,%s,1,%s,%s,%s,%s,%s\n' "$mode" "$unique_keys" "$events_per_key" \
-    "$epochs" "${ee:-$FIG6_EPOCH_EVENTS}" "${pm:-}" "${vm:-}" "${rss:-}" >> "$AGG_OUT"
-  echo "  dev_exec_ms=${pm:-?} verify_ms=${vm:-?} rss_kb=${rss:-?}"
+  trss=$(grep -oE 'Maximum resident set size \(kbytes\): [0-9]+' "$log" | grep -oE '[0-9]+$' | head -1 || true)
+  journal=$(grep -oE '^journal_bytes_last=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+    "$mode" "$unique_keys" "$events_per_key" "$THREADS" \
+    "${ee:-$FIG6_EPOCH_EVENTS}" "${pm:-}" 0 "${hwm:-}" \
+    "${trss:-}" 0 "${journal:-}" >> "$AGG_OUT"
+  echo "[dev] $mode/$unique_keys done: prove_ms=$pm verify_ms=0 hwm_kb=$hwm max_rss_kb=$trss"
   done
 done
 fi
@@ -71,7 +79,7 @@ fi
 # -------- Query (dev mode): Fig.7 shapes, epochs 1..16 -----------------------
 if [ "$RUN_QUERY" = 1 ]; then
 Q_OUT="$ROOT_DIR/results/zkvm_dev_query.csv"
-echo "epoch_type,query,num_epochs,keys,dev_exec_ms,verify_ms,proof_bytes" > "$Q_OUT"
+echo "epoch_type,query,num_epochs,events_per_epoch,keys,prove_ms,verify_ms,max_rss_kb,proof_bytes" > "$Q_OUT"
 map_query() {
   case "$1" in
     samples/sum) echo "samples global_sum" ;;
@@ -85,16 +93,18 @@ map_query() {
 }
 run_q() {  # label keys events_per_key skips...
   local label="$1" kps="$2" epk="$3"; shift 3
-  for ne in 1 2 4 8 16; do
+  for ne in $EPOCH_LIST; do
     local log="$ROOT_DIR/results/_dev_q_${label}_e${ne}.log"
     echo "[dev] query $label epochs=$ne (RISC0_DEV_MODE=1) ..."
-    env RISC0_DEV_MODE=1 RAYON_NUM_THREADS="$THREADS" \
+    /usr/bin/time -v env RISC0_DEV_MODE=1 RAYON_NUM_THREADS="$THREADS" \
       "$BQ" --epochs "$ne" --num-sources 1 --sources-per-epoch 1 \
       --keys-per-source "$kps" --events-per-key "$epk" --num-aggregators 1 \
       --dp-disabled "$@" > "$log" 2>&1
-    grep '^CSVROW,' "$log" | while IFS=, read -r _ qt ep keys pms vms pbytes; do
+    local rss
+    rss=$(grep -oE 'Maximum resident set size \(kbytes\): [0-9]+' "$log" | grep -oE '[0-9]+$' | head -1 || true)
+    grep '^CSVROW,' "$log" | while IFS=, read -r _ qt ep keys pms _vms _pbytes; do
       mapped=$(map_query "$qt"); [ -z "$mapped" ] && continue
-      echo "${mapped% *},${mapped#* },$ep,$keys,$pms,$vms,$pbytes" >> "$Q_OUT"
+      echo "${mapped% *},${mapped#* },$ep,$((keys * epk)),$keys,$pms,0,${rss:-},0" >> "$Q_OUT"
     done
   done
 }
@@ -105,8 +115,10 @@ fi
 
 echo "[dev] done."
 if [ "$RUN_AGGREGATION" = 1 ]; then
-  echo "=== aggregation ==="; column -t -s, "$AGG_OUT"
+  echo "=== aggregation ==="
+  column -t -s, "$AGG_OUT" || cat "$AGG_OUT"
 fi
 if [ "$RUN_QUERY" = 1 ]; then
-  echo "=== query ==="; column -t -s, "$Q_OUT"
+  echo "=== query ==="
+  column -t -s, "$Q_OUT" || cat "$Q_OUT"
 fi

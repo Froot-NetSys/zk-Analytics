@@ -55,3 +55,5 @@ for mode in $FIG6_MODES; do
   done
 done
 echo "[zkvm56] all done -> $OUT"
+echo "=== aggregation ==="
+column -t -s, "$OUT" || cat "$OUT"

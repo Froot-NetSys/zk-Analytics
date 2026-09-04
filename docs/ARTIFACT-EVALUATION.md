@@ -170,8 +170,11 @@ without hours of proving.
 > **What dev mode means.** Setting `RISC0_DEV_MODE=1` makes RISC Zero execute
 > the guest program and produce its journal, but return a fake receipt without
 > any cryptographic proof. That receipt verifies only while dev mode is also
-> enabled and provides no security. Consequently, `dev_exec_ms` measures local
-> guest execution only; dev-mode `verify_ms` and `proof_bytes` must not be used
+> enabled and provides no security. The dev and real-ZK CSVs deliberately use
+> identical schemas: in a dev CSV, `prove_ms` or `prove_ms_total` measures local
+> guest execution rather than proof generation. Because there is no
+> cryptographic proof, dev-mode `verify_ms` and `proof_bytes` are both recorded
+> as zero and must not be used
 > to evaluate proof generation, proof verification, or proof size. Dev mode
 > also runs here with one local aggregator, so it does not validate distributed
 > scaling. See the RISC Zero
@@ -248,8 +251,11 @@ make eval-fig6-aggregator-dev
 Expected output: `results/zkvm_dev_aggregation.csv`. Its `unique_keys` column
 contains 256, 512, 1024, 2048, and 4096 for every aggregation mode; the epoch
 always contains 16,384 events, so `events_per_key` is respectively 64, 32, 16,
-8, and 4. These values validate guest execution only; they are not
-proof-generation, proof-verification, proof-size, or end-to-end measurements.
+8, and 4. It has exactly the same columns and stdout table layout as the real-ZK
+CSV shown below. In the dev output, `prove_ms_total` is guest execution time,
+`time_max_rss_kb` is the measured dev-process peak RSS, and there is no real
+prover process. `verify_ms` and `proof_bytes` are therefore zero; the underlying
+insecure dev receipt is deliberately not reported as a proof.
 
 For measured cryptographic proofs, run:
 
@@ -293,8 +299,10 @@ make eval-fig7-query-dev
 ```
 
 Expected output: `results/zkvm_dev_query.csv`, with 1, 2, 4, 8, and 16 queried
-epochs. As above, dev-mode timing and receipt sizes are functional diagnostics,
-not cryptographic performance results.
+epochs. Its columns and stdout table layout are identical to the real-ZK query
+output shown below. In this dev CSV, `prove_ms` is guest execution time and
+`max_rss_kb` is the measured dev-process peak RSS. `verify_ms` and `proof_bytes`
+are zero because dev mode performs no cryptographic proof or verification.
 
 For real proofs at the reviewer-feasible 1/2/4-epoch points, run:
 

@@ -65,4 +65,6 @@ run_group histogram 1024 8 --skip-samples --skip-cm --skip-raw \
 # CM epochs: 8192 keys x 1 event = 8192 logs/epoch.
 run_group cm        8192 1 --skip-samples --skip-histogram --skip-raw
 
-echo "[qproof] done -> $OUT"; column -t -s, "$OUT" || cat "$OUT"
+echo "[qproof] done -> $OUT"
+echo "=== query ==="
+column -t -s, "$OUT" || cat "$OUT"

@@ -225,30 +225,35 @@ def build_query_csv():
 
 def read_dev_aggregation():
     """Dev-mode (RISC0_DEV_MODE=1) guest-execution times for aggregation.
-    Keyed by (mode, epochs) -> dev_exec_ms. Empty if the run hasn't happened."""
+    Accept the current real-ZK-compatible schema and legacy dev CSVs."""
     path = os.path.join(RESULTS, "zkvm_dev_aggregation.csv")
     out = {}
     if not os.path.exists(path):
         return out
     with open(path) as f:
         for row in csv.DictReader(f):
-            if row.get("dev_exec_ms"):
-                out[(row["mode"], int(row["epochs"]))] = float(row["dev_exec_ms"])
+            value = row.get("prove_ms_total") or row.get("dev_exec_ms")
+            if value:
+                # Figure 6 uses one epoch. Legacy CSVs carried an explicit
+                # epochs column from the former aggregation-scaling sweep.
+                epochs = int(row.get("epochs") or 1)
+                out[(row["mode"], epochs)] = float(value)
     return out
 
 
 def read_dev_query():
     """Dev-mode guest-execution times for queries.
-    Keyed by (epoch_type, query, num_epochs) -> dev_exec_ms."""
+    Accept the current real-ZK-compatible schema and legacy dev CSVs."""
     path = os.path.join(RESULTS, "zkvm_dev_query.csv")
     out = {}
     if not os.path.exists(path):
         return out
     with open(path) as f:
         for row in csv.DictReader(f):
-            if row.get("dev_exec_ms"):
+            value = row.get("prove_ms") or row.get("dev_exec_ms")
+            if value:
                 out[(row["epoch_type"], row["query"], int(row["num_epochs"]))] = \
-                    float(row["dev_exec_ms"])
+                    float(value)
     return out
 
 
