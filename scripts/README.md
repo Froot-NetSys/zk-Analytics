@@ -31,7 +31,8 @@ The paper experiments are driven through the `Makefile` targets and the
 | `eval-fig4-vehicle-dev` | Figure 4 vehicle-emissions distributed pipeline in zkVM dev mode; no real proof. |
 | `eval-fig4-vehicle-zk` | Figure 4 vehicle-emissions distributed pipeline with real proofs. |
 | `eval-table2-native` | Table 2 Vanilla pipelines on Google/CAIDA/Vehicle using 8/8/4 real aggregator nodes, Kafka, RocksDB, and FoundationDB. |
-| `eval-fig5-table3-zk` | Figure 5/Table 3 distributed real-ZK pipeline through Kafka, RocksDB, and FoundationDB. |
+| `eval-fig5-table3-dev` | Figure 5/Table 3 distributed pipeline in zkVM dev mode; no real proof. |
+| `eval-fig5-table3-zk` | Figure 5/Table 3 distributed pipeline with real proofs. |
 | `eval-fig6-aggregator-dev` / `eval-fig6-aggregator-zk` | Figure 6 standalone aggregator benchmark. |
 | `eval-fig7-query-dev` / `eval-fig7-query-zk` | Figure 7 standalone query benchmark. |
 | `eval-zkvm-query-proofs` | Real zkVM query proofs at 1/2/4 epochs. |

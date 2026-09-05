@@ -12,8 +12,9 @@ table (Figures 4–7, Tables 1–3) to a concrete command. The main entry points
   proofs, and the 56-thread aggregation re-anchor).
 - `make eval-fig4-vehicle-dev`, `make eval-fig4-vehicle-zk` — vehicle-emissions
   end-to-end pipeline (Figure 4), in functional dev mode or real-ZK mode.
-- `make eval-fig5-table3-zk` — distributed real-ZK pipeline through Kafka,
-  RocksDB, and FoundationDB (Figure 5 and Table 3).
+- `make eval-fig5-table3-dev`, `make eval-fig5-table3-zk` — distributed
+  pipeline through Kafka, RocksDB, and FoundationDB (Figure 5 and Table 3),
+  in functional dev mode or real-ZK mode.
 - `make eval-fig6-aggregator-dev`, `make eval-fig6-aggregator-zk` — standalone
   zkVM aggregator benchmark (Figure 6).
 - `make eval-fig7-query-dev`, `make eval-fig7-query-zk` — standalone zkVM query

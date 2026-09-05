@@ -4,7 +4,8 @@
         eval-zkvm-aggr-56 eval-zkvm-dev-mode eval-dev-zk-e2e eval-non-zk-all \
         eval-kill eval-fig6-aggregator-dev eval-fig6-aggregator-zk \
         eval-fig7-query-dev eval-fig7-query-zk eval-table2-native \
-        eval-fig5-table3-zk eval-fig4-vehicle-dev eval-fig4-vehicle-zk
+        eval-fig5-table3-dev eval-fig5-table3-zk \
+        eval-fig4-vehicle-dev eval-fig4-vehicle-zk
 
 # Stop local processes left by an interrupted evaluation run.
 eval-kill:
@@ -49,8 +50,12 @@ eval-fig7-query-zk: eval-zkvm-query-proofs
 eval-table2-native:
 	./scripts/eval/run_table2_native.sh
 
-# Paper Figure 5 and Table 3: distributed real-ZK pipeline, exactly one
-# aggregator process per selected machine.
+# Paper Figure 5 and Table 3: distributed pipeline, exactly one aggregator
+# process per selected machine. Dev mode executes the zkVM guests without
+# generating STARK proofs; ZK mode generates and verifies real proofs.
+eval-fig5-table3-dev:
+	RISC0_DEV_MODE=1 FIG=5 ./scripts/eval/run_figures_zk.sh
+
 eval-fig5-table3-zk:
 	RISC0_DEV_MODE=0 FIG=5 ./scripts/eval/run_figures_zk.sh
 

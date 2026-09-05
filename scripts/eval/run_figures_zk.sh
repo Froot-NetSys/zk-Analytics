@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Distributed ZK (zkVM) pipeline for paper Figure 5 and Table 3 through Kafka->RocksDB->
-# aggregator->FDB->querier pipeline WITH real proving + verification. Reports,
+# Distributed zkVM pipeline for paper Figure 5 and Table 3 through Kafka->RocksDB->
+# aggregator->FDB->querier. RISC0_DEV_MODE=1 executes the guests without a real
+# STARK proof; RISC0_DEV_MODE=0 performs real proving and verification. Reports,
 # per cell: prove time, verify time, memory (host + r0vm prover), proof size,
 # public output (journal bytes). The default is the full 12-cell matrix at an
-# epoch size of 16,384 logs; proving each epoch can take hours.
+# epoch size of 16,384 logs; real proving can take hours.
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT_DIR"
 DRV="$ROOT_DIR/scripts/distributed/run_distributed_baseline.sh"
 # Must match the driver's metrics path (run_distributed_baseline.sh writes here).
@@ -12,19 +13,27 @@ MET="$ROOT_DIR/results/_dist_metrics.jsonl"
 source "$ROOT_DIR/scripts/lib/artifact_cluster.sh"
 artifact_cluster_load "$ROOT_DIR"
 
+DEV_MODE="${RISC0_DEV_MODE:-0}"
+case "$DEV_MODE" in
+  0) RUN_KIND=zk ;;
+  1) RUN_KIND=dev ;;
+  *) echo "RISC0_DEV_MODE must be 0 (real ZK) or 1 (dev mode)" >&2; exit 2 ;;
+esac
+
 emit(){ local csv="$1" var="$2" mode="$3"
-  python3 - "$MET" "$var" "$mode" >> "$csv" <<'PY'
+  python3 - "$MET" "$var" "$mode" "$RUN_KIND" >> "$csv" <<'PY'
 import sys,json
-met,var,mode=sys.argv[1],sys.argv[2],sys.argv[3]
+met,var,mode,run_kind=sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4]
 recs=[json.loads(l) for l in open(met) if l.strip()]
 aggs=[r for r in recs if r.get('task')=='aggregation']
 queries=[r for r in recs if r.get('task')=='query']
 if len(aggs) != 1 or len(queries) != 1:
     raise SystemExit(f"expected one aggregation and one query metric, got {len(aggs)} and {len(queries)}")
 agg, q = aggs[0], queries[0]
-if (agg.get('epochs_processed', 0) < 1 or agg.get('total_time_s', 0) <= 0
-        or agg.get('proof_bytes_per_epoch', 0) <= 0):
-    raise SystemExit(f"invalid ZK aggregation metrics: {agg}")
+if agg.get('epochs_processed', 0) < 1 or agg.get('total_time_s', 0) <= 0:
+    raise SystemExit(f"invalid {run_kind} aggregation metrics: {agg}")
+if run_kind == 'zk' and agg.get('proof_bytes_per_epoch', 0) <= 0:
+    raise SystemExit(f"real-ZK run did not produce a proof: {agg}")
 c=agg.get('components_s',{}); qc=q.get('components_s',{})
 def g(d,k): return round(d.get(k,0.0),6)
 print(",".join(str(x) for x in [var,mode,
@@ -44,9 +53,7 @@ PY
 
 run_cell(){
   local log="$ROOT_DIR/results/_dist_driver.log"
-  # This target is exclusively for real proofs; never inherit dev mode from
-  # the caller's shell.
-  if ! env "$@" MODE=zk RISC0_DEV_MODE=0 bash "$DRV" 2>&1 | tee "$log"; then
+  if ! env "$@" MODE=zk RISC0_DEV_MODE="$DEV_MODE" bash "$DRV" 2>&1 | tee "$log"; then
     echo "  cell FAILED: $*" >&2
     tail -100 "$log" >&2
     return 1
@@ -56,8 +63,8 @@ run_cell(){
 HDR="var,mode,agg_total_s,prove_s,verify_s,kafka_recv_s,rocksdb_raw_insert_s,fdb_write_s,agg_host_rss_mb,agg_prover_rss_mb,agg_cluster_rss_mb,proof_bytes,journal_bytes,query_total_s,query_prove_s,query_verify_s,query_fdb_lookup_s,query_host_rss_mb,query_prover_rss_mb"
 
 if [ "${FIG:-5}" = 5 ]; then
-  echo "=== Figure 5 ZK: distributed aggregation (vary aggregators) ==="
-  C="$ROOT_DIR/results/fig5_zk.csv"; echo "$HDR" > "$C"
+  echo "=== Figure 5 ${RUN_KIND}: distributed aggregation (vary aggregators) ==="
+  C="$ROOT_DIR/results/fig5_${RUN_KIND}.csv"; echo "$HDR" > "$C"
   # Build the full cross product by default. FIG5_SPECS remains an explicit
   # point selector for reduced checks.
   if [[ -n "${FIG5_SPECS:-}" ]]; then
@@ -73,15 +80,15 @@ if [ "${FIG:-5}" = 5 ]; then
   for spec in $specs; do
     IFS=: read -r mode N <<< "$spec"
     case "$mode" in samples|histogram|cm) ;; *)
-      echo "[fig5-zk] invalid mode '$mode'; expected samples, histogram, or cm" >&2
+      echo "[fig5-${RUN_KIND}] invalid mode '$mode'; expected samples, histogram, or cm" >&2
       exit 2
     esac
     selected_nodes="$(artifact_nodes_for "$N")"
-    echo "[fig5-zk] mode=$mode aggregators=$N machines=[$selected_nodes]"; : > "$MET"
+    echo "[fig5-${RUN_KIND}] mode=$mode aggregators=$N machines=[$selected_nodes]"; : > "$MET"
     run_cell DATASET=synthetic SYNTH_MODE=$mode SYNTH_KEYS=4096 TOTAL_LOGS=131072 NODES="$selected_nodes"
     emit "$C" "$N" "$mode"
     cat "$C" | tail -1
   done
-  echo "[fig5-zk] -> $C"
+  echo "[fig5-${RUN_KIND}] -> $C"
 fi
-echo "[fig5-table3-zk] done"
+echo "[fig5-table3-${RUN_KIND}] done"

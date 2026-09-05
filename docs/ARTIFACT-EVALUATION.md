@@ -377,21 +377,29 @@ dependencies.
 These experiments require up to eight SSH-reachable machines plus Kafka and
 FoundationDB. These are distributed zk-Analytics experiments, not extrapolated
 single-machine rows and not a native scaling sweep. After completing the shared
-cluster setup above, start the full sweep with:
+cluster setup above, run the functional dev-mode sweep with:
+
+```bash
+KAFKA_HOST=<coordinator-private-address> make eval-fig5-table3-dev
+```
+
+Then start the real-proof sweep with:
 
 ```bash
 KAFKA_HOST=<coordinator-private-address> make eval-fig5-table3-zk
 ```
 
-Expected output: `results/fig5_zk.csv`. By default it directly measures all 12
-combinations of three aggregation modes and 1, 2, 4, or 8 aggregators. Override
-`FIG5_SPECS` only for a reduced smoke test. Every row is produced by the
-requested number of real machines. The runner starts exactly one aggregator on
-each selected machine; it never places multiple aggregators on one machine.
-The CSV reports aggregation prove/verify time, Kafka/RocksDB/FDB components,
-host and prover RSS, proof size, and query costs. Compare aggregation time and
-speedup with Figure 5, and the component measurements with Table 3. Expect this
-run to take many hours.
+Expected outputs are `results/fig5_dev.csv` and `results/fig5_zk.csv`. Both
+commands directly measure all 12 combinations of three aggregation modes and
+1, 2, 4, or 8 aggregators by default. Override `FIG5_SPECS` only for a reduced
+smoke test. Every row is produced by the requested number of real machines.
+The runner starts exactly one aggregator on each selected machine; it never
+places multiple aggregators on one machine. The CSV reports aggregation
+prove/verify time, Kafka/RocksDB/FDB components, host and prover RSS, proof
+size, and query costs. Dev mode executes the same zkVM guests but does not
+create real STARK proofs; use the ZK output for proof size and real proving
+costs. Compare aggregation time and speedup with Figure 5, and the component
+measurements with Table 3. Expect the real-ZK run to take many hours.
 
 `ARTIFACT_MACHINES` is the resulting ordered pool. A point requesting `N`
 aggregators uses its first `N` entries. For example, run every mode on exactly
@@ -416,8 +424,9 @@ make eval-fig5-table3-zk
 The first `ARTIFACT_MACHINES` entry is the coordinator running locally; subsequent
 entries may be SSH aliases or `user@host` targets and must support passwordless
 SSH. The command rejects a requested
-aggregator count larger than the configured machine pool. This real-ZK target
-also forces `RISC0_DEV_MODE=0`, regardless of the caller's environment.
+aggregator count larger than the configured machine pool. The two Make targets
+force `RISC0_DEV_MODE=1` and `RISC0_DEV_MODE=0`, respectively, regardless of
+the caller's environment.
 
 #### Figure 4 — vehicle-emissions end-to-end pipeline
 
