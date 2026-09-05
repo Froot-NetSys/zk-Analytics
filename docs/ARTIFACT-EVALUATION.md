@@ -25,15 +25,6 @@ By running the experiments, reviewers can reproduce or validate the results in:
   and
 - **§7.2:** online SHA-256 log-commitment throughput.
 
-The repository contains no precomputed result files. Each experiment creates
-its own `results/` and `plots/` outputs locally. Reviewers should compare these
-outputs with the corresponding paper figure or table; exact wall-clock values
-vary with hardware.
-
-## Artifact location
-
-<https://github.com/Froot-NetSys/zk-Analytics>
-
 ## Hardware requirements
 
 - **Short functional evaluation:** one x86-64 machine with 8 GB RAM and 10 GB
