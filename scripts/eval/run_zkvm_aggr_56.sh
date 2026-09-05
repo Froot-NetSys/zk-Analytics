@@ -19,7 +19,7 @@ export RAYON_NUM_THREADS="$THREADS"
 export LIBCLANG_PATH="${LIBCLANG_PATH:-/usr/lib/llvm-14/lib}"
 mkdir -p target/tmp
 OUT="${FIG6_ZK_OUT:-$ROOT_DIR/results/zkvm_aggregation_56threads.csv}"
-echo "mode,unique_keys,events_per_key,threads,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,time_max_rss_kb,proof_bytes,journal_bytes" > "$OUT"
+echo "mode,unique_keys,events_per_key,threads,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,max_rss_kb,proof_bytes,journal_bytes" > "$OUT"
 
 echo "[zkvm56] building aggregator host (guest ELFs)..."
 cargo build -p aggregator --bin aggregator --release

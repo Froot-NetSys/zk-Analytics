@@ -28,16 +28,21 @@ echo "[i] Clearing FDB subspace '${FDB_SUBSPACE}' using cluster file ${FDB_CLUST
 # Use fdbcli to clear the subspace range
 # The subspace key is the prefix, so we clear from "prefix" to "prefix\xff"
 if command -v fdbcli >/dev/null 2>&1; then
-  # Convert subspace to hex for fdbcli
-  subspace_hex=$(echo -n "$FDB_SUBSPACE" | xxd -p)
+  # fdbcli requires one \\xNN escape per byte. A single \\x followed by
+  # xxd's hex dump both misencodes the key and wraps long prefixes into tokens.
+  subspace_key=$(python3 - "$FDB_SUBSPACE" <<'PY'
+import os, sys
+print(''.join(r'\x%02x' % byte for byte in os.fsencode(sys.argv[1])))
+PY
+  )
   # End key is subspace + \xff (255)
-  end_hex="${subspace_hex}ff"
+  end_key="${subspace_key}\\xff"
 
   if command -v timeout >/dev/null 2>&1; then
     timeout "${FDB_RESET_TIMEOUT_SEC}" \
-      fdbcli -C "$FDB_CLUSTER_FILE" --exec "writemode on; clearrange \\x${subspace_hex} \\x${end_hex}"
+      fdbcli -C "$FDB_CLUSTER_FILE" --exec "writemode on; clearrange ${subspace_key} ${end_key}"
   else
-    fdbcli -C "$FDB_CLUSTER_FILE" --exec "writemode on; clearrange \\x${subspace_hex} \\x${end_hex}"
+    fdbcli -C "$FDB_CLUSTER_FILE" --exec "writemode on; clearrange ${subspace_key} ${end_key}"
   fi
   echo "[i] Done."
 else

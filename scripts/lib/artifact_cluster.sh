@@ -20,6 +20,7 @@ artifact_cluster_load() {
   [[ -z "$dist_override" ]] || ARTIFACT_REMOTE_DIST_DIR="$dist_override"
 
   ARTIFACT_MACHINES="${ARTIFACT_MACHINES:-node0 node1 node2 node3 node4 node5 node6 node7}"
+  ARTIFACT_KAFKA_HOST="${ARTIFACT_KAFKA_HOST:-node0}"
   if [[ -n "${ARTIFACT_KAFKA_HOST:-}" && -z "${KAFKA_HOST:-}" ]]; then
     KAFKA_HOST="$ARTIFACT_KAFKA_HOST"
     export KAFKA_HOST

@@ -114,6 +114,15 @@ host networking for a newly created FDB container. Existing FDB containers are
 preserved; this command does not migrate their data or change their network
 configuration. For an existing deployment, provide a cluster file whose
 coordinator and storage-server addresses are reachable from every worker.
+If the existing database is disposable, explicitly delete and recreate it at
+the correct address (this removes its old container and anonymous data volume):
+
+```bash
+FDB_PUBLIC_ADDRESS=10.10.1.1 FDB_RESET=1 ./scripts/setup/setup_local_e2e.sh --fdb
+```
+
+Do not keep `FDB_RESET=1` in your shell environment: use it only on the command
+that should erase the database.
 Deployment and each distributed run check database availability from all nodes
 with `fdbcli`; an inaccessible database aborts the run before shared-state reset.
 
@@ -227,8 +236,9 @@ contains 256, 512, 1024, 2048, and 4096 for every aggregation mode; the epoch
 always contains 16,384 events, so `events_per_key` is respectively 64, 32, 16,
 8, and 4. It has exactly the same columns and stdout table layout as the real-ZK
 CSV shown below. In the dev output, `prove_ms_total` is guest execution time,
-`time_max_rss_kb` is the measured dev-process peak RSS, and there is no real
-prover process. `verify_ms` and `proof_bytes` are therefore zero; the underlying
+`max_rss_kb` is peak RSS reported by `/usr/bin/time -v` (Linux reports
+this in KiB). The former column name was `time_max_rss_kb`; `time` identified
+the measurement tool, not a duration. There is no real prover process in dev mode. `verify_ms` and `proof_bytes` are therefore zero; the underlying
 insecure dev receipt is deliberately not reported as a proof.
 
 For measured cryptographic proofs, run:
@@ -242,7 +252,7 @@ This requires AVX-512 and many cores and takes hours. Expected output:
 `mode × unique_keys` points:
 
 ```text
-mode,unique_keys,events_per_key,threads,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,time_max_rss_kb,proof_bytes,journal_bytes
+mode,unique_keys,events_per_key,threads,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,max_rss_kb,proof_bytes,journal_bytes
 ```
 
 Compare proving time, verification time, and peak RSS with Figure 6. The command
@@ -313,6 +323,9 @@ before running Figure 4, Table 2, or Figure 5/Table 3.
 
 ### Shared cluster setup
 
+Kafka defaults to `node0`. All nodes must resolve that hostname to the
+coordinator; use `KAFKA_HOST` or `--kafka-host` to override it on other clusters.
+
 All distributed artifact experiments share the ordered machine pool in
 `.artifact-cluster.env`. Configure passwordless SSH, validate Kafka reachability,
 and optionally deploy the worker binaries with:
@@ -321,7 +334,7 @@ and optionally deploy the worker binaries with:
 ./scripts/setup/setup_artifact_cluster.sh \
   --machines "node0 <node1-ip> <node2-ip> <node3-ip> <node4-ip> <node5-ip> <node6-ip> <node7-ip>" \
   --ssh-user <username> \
-  --kafka-host <coordinator-private-address> \
+  --kafka-host node0 \
   --fdb-cluster-file /etc/foundationdb/fdb.cluster \
   --copy-keys --install-deps --deploy
 ```
@@ -339,6 +352,11 @@ copy-ready command is:
 ```
 
 The first entry is the local coordinator and is not contacted over SSH.
+If Step 0 created a local-only, disposable FDB database, add `--reset-fdb` once
+to the deployment command to delete and recreate it at the IPv4 address resolved
+from `--kafka-host` (or set `FDB_PUBLIC_ADDRESS` explicitly). Worker database
+connectivity is checked before building the binaries. Omit `--reset-fdb` on
+subsequent deployments to retain the data.
 `--copy-keys` may ask for each worker password once; subsequent evaluation runs
 are non-interactive. The generated `.artifact-cluster.env` is ignored by Git
 and is loaded automatically by Figure 4, Table 2, Figure 5, and Table 3.
@@ -368,7 +386,7 @@ and the query. From `node0`, with three SSH-reachable workers, run the functiona
 dev-mode version:
 
 ```bash
-KAFKA_HOST=<coordinator-private-address> make eval-fig4-vehicle-dev
+KAFKA_HOST=node0 make eval-fig4-vehicle-dev
 ```
 
 Expected output: `results/e2e_dev_zk/vehicle_dev_zk.jsonl`. This validates the
@@ -376,7 +394,7 @@ distributed execution checks below but does not produce a cryptographic proof. F
 real-ZK run on the same topology:
 
 ```bash
-KAFKA_HOST=<coordinator-private-address> make eval-fig4-vehicle-zk
+KAFKA_HOST=node0 make eval-fig4-vehicle-zk
 ```
 
 Expected output: `results/e2e_real_zk/vehicle_real_zk.jsonl`. Only this second
@@ -412,7 +430,7 @@ Using the bundled vehicle-emissions data, measure the Vehicle column with four
 machines:
 
 ```bash
-KAFKA_HOST=<coordinator-private-address> TABLE2_SPECS=vehicle:4 \
+KAFKA_HOST=node0 TABLE2_SPECS=vehicle:4 \
   make eval-table2-native
 ```
 
@@ -448,7 +466,7 @@ aggregators uses its first `N` entries. For example, run every mode on exactly
 four machines with:
 
 ```bash
-KAFKA_HOST=<coordinator-private-address> \
+KAFKA_HOST=node0 \
 ARTIFACT_MACHINES="node0 node1 node2 node3" \
 FIG5_NUM_AGGREGATORS=4 \
 make eval-fig5-table3-zk
@@ -457,7 +475,7 @@ make eval-fig5-table3-zk
 Or run only one point on four chosen machines:
 
 ```bash
-KAFKA_HOST=<coordinator-private-address> \
+KAFKA_HOST=node0 \
 ARTIFACT_MACHINES="node0 node2 node5 node7" \
 FIG5_SPECS="histogram:4" \
 make eval-fig5-table3-zk
@@ -475,13 +493,13 @@ After completing the shared cluster setup above, run the functional dev-mode
 sweep with:
 
 ```bash
-KAFKA_HOST=<coordinator-private-address> make eval-fig5-table3-dev
+KAFKA_HOST=node0 make eval-fig5-table3-dev
 ```
 
 Then start the real-proof sweep with:
 
 ```bash
-KAFKA_HOST=<coordinator-private-address> make eval-fig5-table3-zk
+KAFKA_HOST=node0 make eval-fig5-table3-zk
 ```
 
 Expected outputs are `results/fig5_dev.csv` and `results/fig5_zk.csv`. Both
@@ -499,12 +517,12 @@ Run selected aggregator counts for one aggregation mode:
 
 ```bash
 # Samples with 1, 2, 4, and 8 aggregators
-KAFKA_HOST=<coordinator-private-address> \
+KAFKA_HOST=node0 \
   FIG5_SPECS="samples:1,2,4,8" \
   make eval-fig5-table3-dev
 
 # Samples with only 8 aggregators
-KAFKA_HOST=<coordinator-private-address> \
+KAFKA_HOST=node0 \
   FIG5_SPECS="samples:8" \
   make eval-fig5-table3-dev
 ```
@@ -513,7 +531,7 @@ Apply the same aggregator-count list to all three modes (`samples`,
 `histogram`, and `cm`):
 
 ```bash
-KAFKA_HOST=<coordinator-private-address> \
+KAFKA_HOST=node0 \
   FIG5_NUM_AGGREGATORS="1,2,4,8" \
   make eval-fig5-table3-dev
 ```
@@ -564,15 +582,15 @@ Both directories are git-ignored and created on demand.
 | §7.2 online commitment throughput | `BENCH_INPUT=synthetic cargo run ... --streaming --bench` | Terminal output (`serial_ns_per_event`); no result file | No plot |
 | Native/ZK comparison inputs | `make eval-non-zk-baseline` or `make eval-non-zk-all` | `results/non_zk_aggregation_baseline.csv`, `results/non_zk_query_baseline.csv`, `results/zk_cost_breakdown.csv` | `results/non_zk_baseline_summary.md` when measured ZK inputs exist; `plots/non_zk_vs_zk_aggregation.pdf`, `plots/non_zk_vs_zk_query.pdf`, `plots/zk_cost_breakdown.pdf` |
 | Local zkVM dev checks | `make eval-zkvm-dev-mode` | `results/zkvm_dev_aggregation.csv`, `results/zkvm_dev_query.csv` | Inputs to Figure 6/7 plots |
-| Figure 4 vehicle, dev | `KAFKA_HOST=... make eval-fig4-vehicle-dev` | `results/e2e_dev_zk/vehicle_dev_zk.jsonl` | `plots/fig4_e2e.pdf` |
-| Figure 4 vehicle, real ZK | `KAFKA_HOST=... make eval-fig4-vehicle-zk` | `results/e2e_real_zk/vehicle_real_zk.jsonl` | `plots/fig4_e2e.pdf` |
-| Figure 5 / Table 3, dev | `KAFKA_HOST=... make eval-fig5-table3-dev` | `results/fig5_dev.csv` | `plots/fig5_scaling.pdf`, `plots/table3_cost_components.pdf` |
-| Figure 5 / Table 3, real ZK | `KAFKA_HOST=... make eval-fig5-table3-zk` | `results/fig5_zk.csv` | `plots/fig5_scaling.pdf`, `plots/table3_cost_components.pdf` |
+| Figure 4 vehicle, dev | `KAFKA_HOST=node0 make eval-fig4-vehicle-dev` | `results/e2e_dev_zk/vehicle_dev_zk.jsonl` | `plots/fig4_e2e.pdf` |
+| Figure 4 vehicle, real ZK | `KAFKA_HOST=node0 make eval-fig4-vehicle-zk` | `results/e2e_real_zk/vehicle_real_zk.jsonl` | `plots/fig4_e2e.pdf` |
+| Figure 5 / Table 3, dev | `KAFKA_HOST=node0 make eval-fig5-table3-dev` | `results/fig5_dev.csv` | `plots/fig5_scaling.pdf`, `plots/table3_cost_components.pdf` |
+| Figure 5 / Table 3, real ZK | `KAFKA_HOST=node0 make eval-fig5-table3-zk` | `results/fig5_zk.csv` | `plots/fig5_scaling.pdf`, `plots/table3_cost_components.pdf` |
 | Figure 6 aggregator, dev | `make eval-fig6-aggregator-dev` | `results/zkvm_dev_aggregation.csv` | `plots/fig6_aggregation.pdf` |
 | Figure 6 aggregator, real ZK | `make eval-fig6-aggregator-zk` | `results/zkvm_aggregation_56threads.csv` | `plots/fig6_aggregation.pdf` |
 | Figure 7 query, dev | `make eval-fig7-query-dev` | `results/zkvm_dev_query.csv` | `plots/fig7_query.pdf` |
 | Figure 7 query, real ZK | `make eval-fig7-query-zk` | `results/zkvm_query_proofs.csv` | `plots/fig7_query.pdf` |
-| Table 2 native vehicle pipeline | `KAFKA_HOST=... TABLE2_SPECS=vehicle:4 make eval-table2-native` | `results/table2_native.csv`, `results/table2_native/vehicle_native.jsonl` | `plots/table2_native.pdf` |
+| Table 2 native vehicle pipeline | `KAFKA_HOST=node0 TABLE2_SPECS=vehicle:4 make eval-table2-native` | `results/table2_native.csv`, `results/table2_native/vehicle_native.jsonl` | `plots/table2_native.pdf` |
 | Native Google/CAIDA end-to-end baseline | `make eval-non-zk-e2e` | `results/non_zk_e2e_baseline.csv` | Included in the non-ZK summary when present |
 
 ## Troubleshooting

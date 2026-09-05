@@ -8,8 +8,8 @@ set -uo pipefail
 # proofs.
 #
 # Cluster config (override via environment):
-#   KAFKA_HOST         coordinator IP reachable by all nodes (repo ships an
-#                      RFC 5737 placeholder; set the real IP for your cluster)
+#   KAFKA_HOST         coordinator hostname/IP reachable by all nodes
+#                      (default: node0, configurable via the shared config)
 #   FDB_CLUSTER_FILE   defaults to ~/zktel-dist/fdb.cluster
 # Requires the shared artifact cluster configuration and worker deployment
 # created by scripts/setup/setup_artifact_cluster.sh.

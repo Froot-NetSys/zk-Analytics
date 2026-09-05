@@ -47,7 +47,7 @@ fi
 # -------- Aggregation (dev mode): Figure 6, one 16,384-log epoch ------------
 if [ "$RUN_AGGREGATION" = 1 ]; then
 AGG_OUT="${FIG6_DEV_OUT:-$ROOT_DIR/results/zkvm_dev_aggregation.csv}"
-echo "mode,unique_keys,events_per_key,threads,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,time_max_rss_kb,proof_bytes,journal_bytes" > "$AGG_OUT"
+echo "mode,unique_keys,events_per_key,threads,epoch_events,prove_ms_total,verify_ms_total,proc_hwm_kb,max_rss_kb,proof_bytes,journal_bytes" > "$AGG_OUT"
 for mode in $FIG6_MODES; do
   for unique_keys in $FIG6_KEYS; do
   if (( FIG6_EPOCH_EVENTS % unique_keys != 0 )); then

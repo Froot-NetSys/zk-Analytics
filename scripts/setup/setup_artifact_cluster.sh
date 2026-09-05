@@ -10,26 +10,31 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_FILE="${ARTIFACT_CONFIG_FILE:-$ROOT/.artifact-cluster.env}"
 MACHINES="${ARTIFACT_MACHINES:-}"
 SSH_USER_VALUE="${ARTIFACT_SSH_USER:-${USER:-}}"
-KAFKA_VALUE="${ARTIFACT_KAFKA_HOST:-${KAFKA_HOST:-}}"
+KAFKA_VALUE="${ARTIFACT_KAFKA_HOST:-${KAFKA_HOST:-node0}}"
 FDB_SOURCE="${ARTIFACT_FDB_SOURCE:-${FDB_CLUSTER_FILE:-/etc/foundationdb/fdb.cluster}}"
 COPY_KEYS=0
 INSTALL_DEPS=0
 DEPLOY=0
+RESET_FDB=0
 
 usage() {
   cat <<'EOF'
 Usage:
   setup_artifact_cluster.sh --machines "node0 host1 ... host7" \
-    --ssh-user USER --kafka-host COORDINATOR_IP [--fdb-cluster-file FILE] \
-    [--copy-keys] [--install-deps] [--deploy]
+    --ssh-user USER [--kafka-host node0] [--fdb-cluster-file FILE] \
+    [--copy-keys] [--install-deps] [--reset-fdb] [--deploy]
 
 The first machine is the local coordinator and is never contacted over SSH.
+Kafka defaults to node0; override it with --kafka-host or KAFKA_HOST.
 Each remaining machine runs exactly one aggregator. --copy-keys may prompt for
 the workers' passwords. --install-deps requires passwordless sudo and installs
 system build packages, Rust, RISC Zero, and the FoundationDB client on every
 worker without starting a worker-local Kafka/FDB server. --deploy builds locally
 and installs kafka-producer, kafka-consumer, aggregator, querier, the memory
 tracer, and the FDB cluster file on every worker.
+--reset-fdb DELETES the local FDB database and recreates it with the coordinator
+address from --kafka-host (or FDB_PUBLIC_ADDRESS). Only the default local cluster
+file is supported for this reset. Existing databases are preserved by default.
 EOF
 }
 
@@ -42,6 +47,7 @@ while (( $# )); do
     --copy-keys) COPY_KEYS=1; shift ;;
     --install-deps) INSTALL_DEPS=1; shift ;;
     --deploy) DEPLOY=1; shift ;;
+    --reset-fdb) RESET_FDB=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -166,9 +172,31 @@ if (( ${#NORMALIZED[@]} == 1 )); then
   REMOTE_DIST="$HOME/zktel-dist"
 fi
 
+if (( RESET_FDB )); then
+  [[ "$FDB_SOURCE" == /etc/foundationdb/fdb.cluster ]] || {
+    echo "--reset-fdb only supports /etc/foundationdb/fdb.cluster" >&2; exit 2;
+  }
+  fdb_address="$(python3 - "${FDB_PUBLIC_ADDRESS:-$KAFKA_VALUE}" <<'PY'
+import socket, sys
+print(socket.gethostbyname(sys.argv[1]))
+PY
+)"
+  FDB_PUBLIC_ADDRESS="$fdb_address" FDB_RESET=1 bash "$ROOT/scripts/setup/setup_local_e2e.sh" --fdb
+fi
+
 if (( DEPLOY )); then
   [[ -f "$FDB_SOURCE" ]] || { echo "FDB cluster file not found: $FDB_SOURCE" >&2; exit 2; }
   bash "$ROOT/scripts/lib/check_fdb.sh" "$FDB_SOURCE"
+  # Validate the actual database from every worker before the expensive build.
+  for target in "${NORMALIZED[@]:1}"; do
+    echo "[artifact-setup] checking FoundationDB from $target"
+    ssh -n -o BatchMode=yes "$target" "mkdir -p '$REMOTE_DIST'"
+    scp -q "$FDB_SOURCE" "$target:$REMOTE_DIST/fdb.cluster"
+    if ! ssh "$target" "bash -s -- '$REMOTE_DIST/fdb.cluster'" < "$ROOT/scripts/lib/check_fdb.sh"; then
+      echo "FoundationDB check failed on $target. For a disposable local database, rerun with --reset-fdb to DELETE and recreate it at --kafka-host; otherwise migrate its advertised addresses." >&2
+      exit 2
+    fi
+  done
   echo "[artifact-setup] building coordinator binaries"
   (cd "$ROOT" && \
     cargo build --release -p data_source --features kafka --bin kafka-producer && \

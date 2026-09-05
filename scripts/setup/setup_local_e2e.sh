@@ -185,6 +185,32 @@ install_fdb_client() {
 # Install the FoundationDB client and start a local server.
 install_fdb() {
     install_fdb_client
+    local public_address="${FDB_PUBLIC_ADDRESS:-${KAFKA_EXTERNAL_IP:-${KAFKA_HOST:-}}}"
+    local new_database=0 current_cluster
+    if [[ -n "$public_address" ]]; then
+        public_address="$(python3 - "$public_address" <<'PY'
+import ipaddress, json, socket, subprocess, sys
+try:
+    address = ipaddress.IPv4Address(socket.gethostbyname(sys.argv[1]))
+except (ValueError, OSError) as error:
+    sys.exit(f'Cannot resolve the FDB coordinator IPv4 address: {error}')
+interfaces = json.loads(subprocess.check_output(['ip', '-j', '-4', 'address', 'show']))
+local_addresses = {a['local'] for i in interfaces for a in i.get('addr_info', [])}
+if address.is_loopback or address.is_unspecified or str(address) not in local_addresses:
+    sys.exit('FDB_PUBLIC_ADDRESS must be a non-loopback IPv4 address assigned to this coordinator')
+print(address)
+PY
+        )"
+    fi
+    if [[ "${FDB_RESET:-0}" == 1 ]]; then
+        [[ -n "$public_address" ]] || {
+            log_error "FDB_RESET=1 requires FDB_PUBLIC_ADDRESS (the coordinator's reachable IPv4 address)"; return 2;
+        }
+        log_warn "FDB_RESET=1: deleting the fdb container and its anonymous data volume"
+        if docker_cmd inspect fdb >/dev/null 2>&1; then
+            docker_cmd rm -fv fdb
+        fi
+    fi
 
     # Create FDB config directory
     sudo mkdir -p /etc/foundationdb
@@ -194,23 +220,21 @@ install_fdb() {
     log_info "Starting FoundationDB via Docker..."
 
     if docker_cmd ps -a --format '{{.Names}}' | grep -q '^fdb$'; then
-        if [[ -n "${FDB_PUBLIC_ADDRESS:-}" ]]; then
+        docker_cmd start fdb >/dev/null
+        if [[ -n "$public_address" ]]; then
             current_cluster="$(docker_cmd exec fdb cat /var/fdb/fdb.cluster)" || {
                 log_error "Existing FDB must be running to validate its address; its data has been preserved"; exit 2;
             }
-            if [[ "$current_cluster" != *"@${FDB_PUBLIC_ADDRESS}:4500" ]]; then
-                log_error "Existing FDB advertises a different address. Use its routable cluster file or migrate the existing database before selecting FDB_PUBLIC_ADDRESS; data has been preserved."
+            if [[ "$current_cluster" != *"@${public_address}:4500" ]]; then
+                log_error "Existing FDB advertises a different address. Migrate its data, or explicitly use FDB_RESET=1 to DELETE the database and recreate it at FDB_PUBLIC_ADDRESS=$public_address."
                 exit 2
             fi
         fi
-        docker_cmd start fdb 2>/dev/null || true
     else
-        if [[ -n "${FDB_PUBLIC_ADDRESS:-}" ]]; then
-          [[ "$FDB_PUBLIC_ADDRESS" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            log_error "FDB_PUBLIC_ADDRESS must be the coordinator's private IPv4 address"; exit 2;
-          }
+        new_database=1
+        if [[ -n "$public_address" ]]; then
           docker_cmd run -d --name fdb --restart unless-stopped \
-            --network host -e FDB_PUBLIC_ADDRESS="$FDB_PUBLIC_ADDRESS" \
+            --network host -e FDB_PUBLIC_ADDRESS="$public_address" \
             --entrypoint /bin/bash foundationdb/foundationdb:7.1.25 -c '
               printf "docker:docker@%s:4500\n" "$FDB_PUBLIC_ADDRESS" > /var/fdb/fdb.cluster
               exec fdbserver --cluster-file /var/fdb/fdb.cluster \
@@ -231,23 +255,20 @@ install_fdb() {
 
     # Copy cluster file from container
     log_info "Configuring FDB cluster file..."
-    docker_cmd exec fdb cat /var/fdb/fdb.cluster | sudo tee /etc/foundationdb/fdb.cluster >/dev/null 2>&1 || {
-        # If container IP changed, update cluster file
-        FDB_IP=$(docker_cmd inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' fdb)
-        echo "docker:docker@${FDB_IP}:4500" | sudo tee /etc/foundationdb/fdb.cluster >/dev/null
-    }
+    docker_cmd exec fdb cat /var/fdb/fdb.cluster | sudo tee /etc/foundationdb/fdb.cluster >/dev/null
 
     # Initialize database if needed
-    if ! fdbcli --exec "status minimal" 2>&1 | grep -q "Healthy"; then
+    if (( new_database )); then
         log_info "Initializing FDB database..."
-        fdbcli --exec "configure new single ssd" 2>/dev/null || true
+        timeout 30 fdbcli -C /etc/foundationdb/fdb.cluster --exec "configure new single ssd"
     fi
 
     # Verify connection
-    if fdbcli --exec "status minimal" 2>&1 | grep -q "Healthy\|The database is available"; then
+    if timeout 30 fdbcli -C /etc/foundationdb/fdb.cluster --exec "status minimal" 2>&1 | grep -q "Healthy\|The database is available"; then
         log_info "FoundationDB is healthy"
     else
-        log_warn "FoundationDB may need manual initialization. Run: fdbcli --exec 'configure new single ssd'"
+        log_error "FoundationDB is unavailable; inspect 'docker logs fdb' and /etc/foundationdb/fdb.cluster"
+        return 1
     fi
 
     log_info "FoundationDB setup complete"
@@ -538,6 +559,9 @@ usage() {
     echo "  --build    Build project only"
     echo "  --status   Show status only"
     echo "  --help     Show this help"
+    echo ""
+    echo "FDB_PUBLIC_ADDRESS=IPv4  Advertise the coordinator's reachable address (also accepts KAFKA_EXTERNAL_IP/KAFKA_HOST)"
+    echo "FDB_RESET=1              DELETE and recreate the local FDB database; requires a reachable address"
     echo ""
     exit 0
 }
