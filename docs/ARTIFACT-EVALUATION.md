@@ -52,18 +52,6 @@ By running the experiments, reviewers can reproduce or validate the results in:
 - Please report setup or execution problems through the artifact-submission
   discussion channel so the instructions can be corrected during kick-the-tires.
 
-## Claims under evaluation
-
-1. **Functional** — the system builds and runs the three pipeline stages
-   (data-source SHA-256 log commitment → distributed RISC Zero aggregation →
-   verifiable RISC Zero query engine), and produces verifiable proofs.
-2. **Low online + verification overhead** — log commitment and proof
-   *verification* are cheap (sub-100 ms verification; millions of commits/s).
-3. **Aggregation dominates, and scales** — proof *generation* is the dominant
-   cost and parallelizes near-linearly across aggregators (Fig 5).
-4. **Practical at moderate scale** — end-to-end proof generation completes in
-   hours, proofs stay compact, verification stays constant (Figs 4, 6, 7).
-
 ## Detailed instructions
 
 ### Requirements
