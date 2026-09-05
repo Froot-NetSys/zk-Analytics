@@ -10,10 +10,7 @@ The system uses SHA-256 hash chains for online commitments and the
 
 This repository accompanies [*Zero-Knowledge Cloud Analytics* (SIGCOMM 2026)](https://dl.acm.org/doi/10.1145/3789240.3829157).
 
-[Artifact evaluation](docs/ARTIFACT-EVALUATION.md) ·
-[Benchmarks](docs/BENCHMARKS.md) ·
-[Distributed setup](docs/DISTRIBUTED_SETUP.md) ·
-[Citation](CITATION.cff)
+[Artifact evaluation](docs/ARTIFACT-EVALUATION.md)
 
 ## SIGCOMM 2026 Artifact Evaluation
 
