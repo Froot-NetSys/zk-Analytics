@@ -10,6 +10,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT_DIR"
 DRV="$ROOT_DIR/scripts/distributed/run_distributed_baseline.sh"
 # Must match the driver's metrics path (run_distributed_baseline.sh writes here).
 MET="$ROOT_DIR/results/_dist_metrics.jsonl"
+mkdir -p "$ROOT_DIR/results"
 source "$ROOT_DIR/scripts/lib/artifact_cluster.sh"
 artifact_cluster_load "$ROOT_DIR"
 
