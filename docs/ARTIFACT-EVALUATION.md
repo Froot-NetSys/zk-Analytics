@@ -347,6 +347,18 @@ and optionally deploy the worker binaries with:
   --copy-keys --install-deps --deploy
 ```
 
+For a CloudLab allocation named `node0` through `node7`, the equivalent
+copy-ready command is:
+
+```bash
+./scripts/setup/setup_artifact_cluster.sh \
+  --machines "node0 node1 node2 node3 node4 node5 node6 node7" \
+  --ssh-user "$USER" \
+  --kafka-host node0 \
+  --fdb-cluster-file /etc/foundationdb/fdb.cluster \
+  --copy-keys --install-deps --deploy
+```
+
 The first entry is the local coordinator and is not contacted over SSH.
 `--copy-keys` may ask for each worker password once; subsequent evaluation runs
 are non-interactive. The generated `.artifact-cluster.env` is ignored by Git
