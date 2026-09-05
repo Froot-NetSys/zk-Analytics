@@ -153,28 +153,6 @@ define the HTTP schema, including additional query types and key filters.
 Deployment scripts configure the storage paths and FoundationDB connection;
 see the [distributed setup guide](docs/DISTRIBUTED_SETUP.md) for configuration.
 
-## Reproduce the paper
-
-**Reviewers should start with the [Artifact Evaluation Guide](docs/ARTIFACT-EVALUATION.md).**
-It provides the experiment prerequisites, reduced-scale runs, expected outputs,
-and mappings to paper figures and tables.
-
-| Experiment | Make target |
-|---|---|
-| Native analytics baseline | `eval-non-zk-baseline` |
-| Local zkVM functional checks (no real proofs) | `eval-zkvm-dev-mode` |
-| Figure 4: vehicle-emissions pipeline with real proofs | `eval-fig4-vehicle-zk` |
-| Table 2: native distributed pipelines | `eval-table2-native` |
-| Figure 5 / Table 3: distributed aggregation with real proofs | `eval-fig5-table3-zk` |
-| Figure 6: standalone aggregation with real proofs | `eval-fig6-aggregator-zk` |
-| Figure 7: query proofs | `eval-fig7-query-zk` |
-| Plot available experiment results | `eval-plots-all` |
-
-Invoke a target with `make <target>` from the repository root. Real-proof runs
-can take hours or days; distributed runs require the cluster setup in the guide.
-The vehicle-emissions dataset is bundled; Google Cluster v3 and CAIDA traces
-must be obtained separately. Synthetic experiments need no external datasets.
-
 ## Repository layout
 
 | Path | Purpose |
