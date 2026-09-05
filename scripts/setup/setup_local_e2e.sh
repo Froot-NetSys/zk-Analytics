@@ -273,19 +273,40 @@ create_directories() {
     log_info "All directories created successfully"
 }
 
-# Install Rust and RISC0
-install_risc0() {
-    # Install Rust if not present
-    if ! command -v rustc &>/dev/null; then
-        log_info "Installing Rust..."
+# Install the latest stable Rust/Cargo even if distro Rust is already present.
+install_rust() {
+    local cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+    export PATH="$cargo_home/bin:$PATH"
+    if ! command -v rustup &>/dev/null; then
+        log_info "Installing rustup..."
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$HOME/.cargo/env"
-    else
-        log_info "Rust already installed: $(rustc --version)"
     fi
 
-    # Update Rust
+    log_info "Updating stable Rust and Cargo..."
     rustup update stable
+    rustup default stable
+    # Apply stable to this setup run even if the calling shell selected another
+    # toolchain. RISC0 guest builds explicitly select their own toolchain.
+    export RUSTUP_TOOLCHAIN=stable
+    hash -r
+    log_info "Using $(rustc --version) / $(cargo --version)"
+
+    # A child script cannot update its caller's PATH. Persist the preference
+    # for new shells, including when Cargo was already later in PATH.
+    local profile path_line='export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"'
+    for profile in "$HOME/.bashrc" "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.zshrc"; do
+        if [[ "$profile" == "$HOME/.bashrc" || "$profile" == "$HOME/.profile" || -f "$profile" ]]; then
+            if ! grep -qxF "$path_line" "$profile" 2>/dev/null; then
+                printf '\n# Prefer rustup Rust and Cargo over system packages.\n%s\n' "$path_line" >> "$profile"
+            fi
+        fi
+    done
+    log_info 'For an already-open shell, run: export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"; hash -r'
+}
+
+# Install Rust and RISC0
+install_risc0() {
+    install_rust
 
     # Install RISC0 toolchain
     log_info "Installing RISC0 toolchain..."
@@ -511,7 +532,7 @@ usage() {
     echo "  --docker   Install Docker only"
     echo "  --fdb      Install FoundationDB only"
     echo "  --fdb-client Install the FoundationDB client only (no local server)"
-    echo "  --risc0    Install RISC0 toolchain only"
+    echo "  --risc0    Update stable Rust/Cargo and install the RISC0 toolchain"
     echo "  --kafka    Setup Kafka only"
     echo "  --dirs     Create required directories only (tmp, rocksdb)"
     echo "  --build    Build project only"
@@ -533,6 +554,12 @@ main() {
             setup_kafka
             build_project
             print_status
+            # Reload shell configuration here; the caller's shell still needs
+            # its own reload because this script runs as a child process.
+            if [[ -f "$HOME/.bashrc" ]]; then
+                source "$HOME/.bashrc"
+            fi
+            log_info 'To refresh PATH in your current terminal, run: source ~/.bashrc'
             ;;
         --deps|deps)
             install_deps
