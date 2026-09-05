@@ -111,7 +111,8 @@ make eval-zkvm-dev-mode
 
 **Dev mode does not produce cryptographic proofs.** It executes the guest and
 returns a fake receipt. Use it to check guest execution; use the real-proof
-experiments below to evaluate proving, verification, and proof size.
+experiments in the [Artifact Evaluation Guide](docs/ARTIFACT-EVALUATION.md)
+to evaluate proving, verification, and proof size.
 
 For a complete deployment, follow the
 [artifact evaluation guide](docs/ARTIFACT-EVALUATION.md#step-3--distributed-experiments),
