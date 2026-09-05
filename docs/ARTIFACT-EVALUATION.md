@@ -77,7 +77,7 @@ git clone https://github.com/Froot-NetSys/zk-Analytics
 cd zk-Analytics
 ```
 
-#### Option A — install all prerequisites (full local environment)
+#### Install all prerequisites (full local environment)
 
 Use the repository setup script on Ubuntu/Debian to install the build tools,
 RISC Zero toolchain, Docker, Kafka, and FoundationDB, and to start the local
@@ -105,25 +105,6 @@ with `fdbcli`; an inaccessible database aborts the run before shared-state reset
 The script invokes `sudo`. If it adds your account to the `docker` group, log
 out and back in before running Docker without `sudo`.
 
-#### Option B — install only the quick-start prerequisites
-
-Use this smaller installation when evaluating only the build, native baseline,
-and zkVM dev-mode targets:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y build-essential clang libclang-dev cmake \
-  libssl-dev pkg-config python3 python3-matplotlib
-
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-  sh -s -- -y
-source "$HOME/.cargo/env"
-
-curl -fsSL https://risczero.com/install | bash
-export PATH="$HOME/.risc0/bin:$PATH"
-rzup install
-```
-
 Confirm that both the host and RISC Zero tools are available:
 
 ```bash
@@ -133,29 +114,17 @@ rzup show
 r0vm --version
 ```
 
-All four commands must succeed. The RISC Zero installer requires `rustc`, so the
-Rust installation above must come first on a clean machine. If `cargo` or `rzup`
-is not found immediately after installation, source `$HOME/.cargo/env` and add
-`$HOME/.risc0/bin` to `PATH` as shown above (or open a new login shell).
+All four commands must succeed. If `cargo` or `rzup` is not found immediately
+after installation, run `source "$HOME/.cargo/env"` and
+`export PATH="$HOME/.risc0/bin:$PATH"` (or open a new login shell).
 
 #### Build
 
 ```bash
 mkdir -p target/tmp            # required by .cargo/config.toml (EXDEV workaround)
-# Option A: pipeline binaries + zkVM guest ELFs
+# Pipeline binaries + zkVM guest ELFs
 ./scripts/setup/setup_local_e2e.sh --build
 ```
-
-If you chose Option B, build only the standalone functional-check binaries:
-
-```bash
-cargo build --release -p native-baseline
-cargo build --release -p aggregator --bin aggregator
-cargo build --release -p querier-host --bin bench_queries
-```
-
-Option B does not install the FoundationDB client or Kafka build dependencies.
-Complete Option A before building or running the distributed pipeline.
 
 A successful build compiles the feature-gated Kafka producer/consumer,
 FoundationDB-backed aggregator/querier, and the zkVM guest ELFs. Complete
