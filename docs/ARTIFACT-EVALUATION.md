@@ -73,7 +73,7 @@ By running the experiments, reviewers can reproduce or validate the results in:
 | CPU | any x86-64 | **AVX-512**, many cores (paper: CloudLab `c6420`, dual 16-core Intel Xeon Gold 6142) |
 | RAM | 8 GB | ≥ 64 GB (prover peaks ~9–10 GB/node; parallel proving needs headroom) |
 | Disk | **10 GB free** | 50+ GB free (RocksDB/FoundationDB + datasets) |
-| Time | minutes | **hours per experiment** (see table below) |
+| Time | minutes | **hours per experiment** |
 
 The setup script supports Ubuntu/Debian and uses `sudo` to install packages.
 `scripts/setup/setup_local_e2e.sh --all` installs `clang`/`libclang` (RocksDB),
@@ -478,19 +478,20 @@ command may be used for proof-generation and proof-verification performance.
 Table 2 uses the same real datasets and distributed topologies as Figure 4:
 Google Cluster with eight aggregators, CAIDA with eight aggregators, and Vehicle
 Emissions with four aggregators. It is not a single-machine synthetic sweep.
-All three runs include log commitment, Kafka ingestion, RocksDB raw storage,
+The pipeline includes log commitment, Kafka ingestion, RocksDB raw storage,
 parallel native aggregation, FoundationDB storage, and the native query.
 
-After installing the Google and CAIDA inputs and completing the shared cluster
-setup above, run the Vanilla side of Table 2 with:
+Using the bundled vehicle-emissions data, measure the Vehicle column with four
+machines:
 
 ```bash
-KAFKA_HOST=<coordinator-private-address> make eval-table2-native
+KAFKA_HOST=<coordinator-private-address> TABLE2_SPECS=vehicle:4 \
+  make eval-table2-native
 ```
 
-Expected output: `results/table2_native.csv`, plus one raw JSONL file per
-dataset under `results/table2_native/`. Every row is measured using the actual
-number of aggregator machines; no multi-node values are inferred. The CSV is
+Expected output: `results/table2_native.csv` and
+`results/table2_native/vehicle_native.jsonl`. The row is measured using four
+actual aggregator machines; no multi-node values are inferred. The CSV is
 organized around the Vanilla columns in the paper table:
 
 ```text
@@ -501,14 +502,6 @@ dataset,num_aggregators,epochs_on_critical_node,rocksdb_insert_ms_per_epoch,rock
 time (in parallel).” Kafka transmission is not added to this value; RocksDB and
 FoundationDB costs are reported in their own columns. The ZK columns in Table 2
 come from the matching real-ZK Figure 4 runs, not from this Vanilla command.
-
-If only the bundled vehicle-emissions data is available, directly measure just
-that Table 2 column with four machines:
-
-```bash
-KAFKA_HOST=<coordinator-private-address> TABLE2_SPECS=vehicle:4 \
-  make eval-table2-native
-```
 
 Native processes are sampled every 10 ms, with GNU `time` maximum RSS as a
 fallback. Press Ctrl-C once to terminate the current cell. If an abnormal
@@ -553,7 +546,7 @@ Both directories are git-ignored and created on demand.
 | Figure 6 aggregator, real ZK | `make eval-fig6-aggregator-zk` | `results/zkvm_aggregation_56threads.csv` | `plots/fig6_aggregation.pdf` |
 | Figure 7 query, dev | `make eval-fig7-query-dev` | `results/zkvm_dev_query.csv` | `plots/fig7_query.pdf` |
 | Figure 7 query, real ZK | `make eval-fig7-query-zk` | `results/zkvm_query_proofs.csv` | `plots/fig7_query.pdf` |
-| Table 2 native distributed pipeline | `KAFKA_HOST=... make eval-table2-native` | `results/table2_native.csv`, `results/table2_native/<dataset>_native.jsonl` | `plots/table2_native.pdf` |
+| Table 2 native vehicle pipeline | `KAFKA_HOST=... TABLE2_SPECS=vehicle:4 make eval-table2-native` | `results/table2_native.csv`, `results/table2_native/vehicle_native.jsonl` | `plots/table2_native.pdf` |
 | Native Google/CAIDA end-to-end baseline | `make eval-non-zk-e2e` | `results/non_zk_e2e_baseline.csv` | Included in the non-ZK summary when present |
 
 After running any desired subset of experiments, generate every plot whose
