@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the corrected Table 2 CSV from the sweep's JSONL records."""
+"""Build the standalone distributed zkVM sweep CSV from JSONL records."""
 from __future__ import annotations
 import argparse, csv, json
 
@@ -15,4 +15,4 @@ fields=["aggregation_type","mode","num_aggregators",
 with open(a.out,"w",newline="") as f:
     w=csv.DictWriter(f,fieldnames=fields); w.writeheader()
     for r in rows: w.writerow({k:r.get(k,"") for k in fields})
-print(f"[t2-build] wrote {a.out} from {len(rows)} records")
+print(f"[zkvm-sweep-build] wrote {a.out} from {len(rows)} records")

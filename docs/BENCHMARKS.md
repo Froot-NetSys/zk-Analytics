@@ -5,28 +5,31 @@ The maintained, end-to-end benchmark and paper-reproduction guide is
 table (Figures 4–7, Tables 1–3) to a concrete command. The main entry points
 (each prints `*_ms` timing fields and writes CSVs under `results/`):
 
-- `make eval-non-zk-baseline`, `make eval-non-zk-e2e` — native (non-ZK)
-  aggregation/query baselines (see below).
+- `make eval-non-zk-baseline` — local native (non-ZK) aggregation/query
+  functional baseline (see below).
 - `make eval-zkvm-dev-mode`, `make eval-zkvm-query-proofs`,
   `make eval-zkvm-aggr-56` — zkVM proving benchmarks (execution-only, query
   proofs, and the 56-thread aggregation re-anchor).
-- `make eval-dev-zk-e2e` — distributed end-to-end for all 3 datasets in zkVM
-  **dev mode** (full cluster pipeline, guests executed, STARK proof faked;
-  minutes not hours). Set `KAFKA_HOST` for your cluster; writes
-  `results/e2e_dev_zk/<dataset>_dev_zk.jsonl`.
-- `FIG=6 ./scripts/eval/run_figures_native.sh` / `run_figures_zk.sh` —
-  single-machine aggregation proving time / proof size / memory (Figure 6).
-- `./scripts/eval/run_fig7_native.sh` — query benchmark (Figure 7).
-- `./scripts/distributed/run_distributed_baseline.sh`, `./scripts/eval/run_table2_sweep.sh` —
-  distributed end-to-end across 1/2/4/8 aggregators (Figure 5, Tables 2–3).
+- `make eval-fig4-vehicle-dev`, `make eval-fig4-vehicle-zk` — vehicle-emissions
+  end-to-end pipeline (Figure 4), in functional dev mode or real-ZK mode.
+- `make eval-fig5-table3-dev`, `make eval-fig5-table3-zk` — distributed
+  pipeline through Kafka, RocksDB, and FoundationDB (Figure 5 and Table 3),
+  in functional dev mode or real-ZK mode.
+- `make eval-fig6-aggregator-dev`, `make eval-fig6-aggregator-zk` — standalone
+  zkVM aggregator benchmark (Figure 6).
+- `make eval-fig7-query-dev`, `make eval-fig7-query-zk` — standalone zkVM query
+  benchmark (Figure 7).
+- `make eval-table2-native` — the 8/8/4-node Google, CAIDA, and Vehicle
+  Vanilla pipelines through Kafka, RocksDB, and FoundationDB (Table 2).
 
 ## Non-ZK Native Baseline (SIGCOMM camera-ready)
 
 Isolates the cost of **zkVM proof generation** from the cost of the analytics
 architecture itself, by running the *same* aggregation/query logic
 (`process_*_aggr`, `run_*_query`) natively on the host CPU with **no zkVM and no
-proofs**, on the same machine / input / epoch+batch sizes / aggregator counts /
-matched CPU cores as the zkVM experiments.
+proofs**, on the same machine / input / epoch+batch sizes / matched CPU cores as
+the zkVM experiments. The quick baseline measures one local aggregator; it does
+not infer distributed scaling.
 
 Components (all additive; the default proving path is unchanged):
 
@@ -41,7 +44,8 @@ Components (all additive; the default proving path is unchanged):
   - `make eval-zkvm-aggr-56` — re-prove aggregation at 56 threads (hours) to
     match the paper's all-cores setup.
   - `make eval-zkvm-query-proofs` — real zkVM query proofs at 1/2/4 epochs.
-  - `make eval-non-zk-e2e` — native e2e on the real Google/CAIDA traces.
+  - `make eval-non-zk-e2e` — optional legacy native diagnostic for separately
+    obtained Google/CAIDA traces; it is not the primary Figure 4 command.
   - `scripts/eval/run_non_zk_phase2.sh` — runs the CPU-heavy steps (query proofs,
     CAIDA prep, e2e) in sequence on a quiet machine, then re-merges.
 

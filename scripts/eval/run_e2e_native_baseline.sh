@@ -68,9 +68,13 @@ run_native() {  # dataset mode bench_input extra_env zk_agg_s zk_q_s prov
   read -r dev drss _ <<< "$(host_pass "$mode" "$binput" "$extra" dev)"
   local rss_mb slow
   rss_mb=$(python3 -c "print(f'{${nrss:-0}/1024:.1f}')")
-  slow=$(python3 -c "n=${nat:-0}/1000; print(f'{${zk_agg}/n:.0f}' if n>0 else '')")
+  if [ "$zk_agg" = 0 ]; then
+    slow=""
+  else
+    slow=$(python3 -c "n=${nat:-0}/1000; print(f'{${zk_agg}/n:.0f}' if n>0 else '')")
+  fi
   echo "$dataset,$mode,$binput,$EPOCHS,$EPOCH_LOGS,$((EPOCHS*${ee:-EPOCH_LOGS})),${nat:-},${rss_mb},${dev:-},${zk_agg},${zk_q},${slow},$prov" >> "$OUT"
-  echo "[e2e] $dataset/$mode native_ms=$nat dev_exec_ms=$dev rss_mb=$rss_mb slowdown=${slow}x"
+  echo "[e2e] $dataset/$mode native_ms=$nat dev_exec_ms=$dev rss_mb=$rss_mb proof_slowdown=${slow:-n/a}${slow:+x}"
 }
 
 # Synthetic control (Hash Table / Histogram / CMS) — always available.

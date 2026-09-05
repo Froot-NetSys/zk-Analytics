@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 set -uo pipefail
-# Distributed Table 2 sweep: aggregator proof size, public output, and CORRECTED
-# peak memory (host + r0vm prover) vs number of aggregator machines.
+# Standalone distributed zkVM diagnostic: proof size, public output, and peak
+# memory (host + r0vm prover) vs number of aggregator machines. It synthesizes
+# epochs directly and does not run Kafka or FoundationDB, so it is not the
+# paper's Table 2 or Table 3 pipeline experiment.
 #
 # Synthetic 4,096 series / 131,072 logs / epoch 16,384 / batch 8; aggregators
 # N in {1,2,4,8} x modes {samples,histogram,cm}. Each of the N nodes proves ONE
 # epoch (16,384 logs, 4096/N keys) via the RocksDB pipeline + --fake-epochs (so
 # proof_bytes/journal_bytes are logged AND host+prover memory is measured).
 #
-# PARALLELIZED: Table 2 cells are independent, so per mode the N={1,2,4} cells
+# Cells are independent, so per mode the N={1,2,4} cells
 # run CONCURRENTLY on disjoint nodes (node0 | node1-2 | node3-6), then N=8 uses
 # all nodes. Modes run sequentially (each needs up to 8 nodes).
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT_DIR"
@@ -16,7 +18,7 @@ ALLNODES="node0 node1 node2 node3 node4 node5 node6 node7"
 DIST="$HOME/zktel-dist"; RBIN="$DIST/bin"
 REMOTE_ENV="LD_LIBRARY_PATH=$DIST/lib PATH=$HOME/.cargo/bin:\$PATH"
 MEM_INTERVAL="${MEM_INTERVAL:-2.0}"; SEED="${SEED:-0xA66A1E}"
-OUT="$ROOT_DIR/results/table2_distributed.csv"; JSONL="$ROOT_DIR/results/_table2_metrics.jsonl"
+OUT="$ROOT_DIR/results/zkvm_distributed_sweep.csv"; JSONL="$ROOT_DIR/results/_zkvm_distributed_sweep.jsonl"
 : > "$JSONL"
 source "$ROOT_DIR/scripts/lib/common.sh"
 
@@ -48,14 +50,14 @@ launch_cell(){
 # collect_parse mode N "node list" runid
 collect_parse(){
   local mode="$1" N="$2" nodes="$3" run="$4"
-  local WD="/mydata/dist_run/table2_${mode}_n${N}" LD; LD="$WD/logs"; mkdir -p "$LD"; local i=0
+  local WD="/mydata/dist_run/zkvm_sweep_${mode}_n${N}" LD; LD="$WD/logs"; mkdir -p "$LD"; local i=0
   for n in $nodes; do
     for try in 1 2 3 4 5; do on_node "$n" "cat /tmp/${run}_$i.log" > "$LD/agg_$i.log" 2>/dev/null; [ -s "$LD/agg_$i.log" ] && break; sleep 2; done
     on_node "$n" "cat /tmp/${run}_${i}_time.log" > "$LD/agg_${i}_time.log" 2>/dev/null
     on_node "$n" "cat /tmp/${run}_$i.json" > "$LD/mem_$i.json" 2>/dev/null
     i=$((i+1))
   done
-  python3 "$ROOT_DIR/scripts/lib/_parse_table2.py" --mode "$mode" --num-aggregators "$N" --logdir "$LD" --jsonl "$JSONL"
+  python3 "$ROOT_DIR/scripts/lib/_parse_zkvm_distributed_sweep.py" --mode "$mode" --num-aggregators "$N" --logdir "$LD" --jsonl "$JSONL"
 }
 # wait for all DONE markers: args = "node:idx:runid ..."
 wait_done(){ for spec in "$@"; do IFS=: read -r n i run <<< "$spec"
@@ -83,5 +85,5 @@ for mode in ${MODES:-samples histogram cm}; do
   wait_done $specs
   collect_parse "$mode" 8 "$ALLNODES" "$r8"
 done
-python3 "$ROOT_DIR/scripts/lib/_build_table2.py" --jsonl "$JSONL" --out "$OUT"
-echo "[t2] done -> $OUT"
+python3 "$ROOT_DIR/scripts/lib/_build_zkvm_distributed_sweep.py" --jsonl "$JSONL" --out "$OUT"
+echo "[zkvm-sweep] done -> $OUT"

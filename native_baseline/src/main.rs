@@ -14,8 +14,8 @@
 //!   --series N --samples-per-series N   (series*sps == events per epoch)
 //!   --epochs N              (aggregation: epochs to process)
 //!   --num-epochs N          (query: number of queried epochs)
-//!   --query KIND            (query: global_sum|per_key_sum|topk_hash|
-//!                            cm_topk|cm_estimate|hist_percentile)
+//!   --query KIND            (query: samples_sum|per_key_sum|samples_sum_topk|
+//!                            cm_topk|cm_estimate|hist_percentile|histogram_all)
 //!   --batch N               (commit batch size, default 8)
 //!   --threads N             (rayon pool size for the multi-core run)
 //!   --reps N                (timing repetitions; min is reported)
@@ -393,7 +393,7 @@ fn run_query(epoch_type: &str) {
     let num_epochs = argu64("--num-epochs", 16);
     let reps = argu64("--reps", 5).max(1);
     let seed = argu64("--seed", 0xA66A_1E);
-    let query_kind = arg("--query", "global_sum");
+    let query_kind = arg("--query", "samples_sum");
     let key_zipf = std::env::var("KEY_ZIPF_S").ok().and_then(|s| s.parse::<f64>().ok());
 
     let epoch_inputs = generate_epochs(epoch_type, series, sps, batch, 1, num_epochs, seed, key_zipf);
@@ -422,9 +422,9 @@ fn run_query(epoch_type: &str) {
                 links.push(build_chain_link(o.epoch_chain_link.prev_chain_hash, o.state_commit));
             }
             let query = match query_kind.as_str() {
-                "global_sum" => q::SamplesQuery::Sum,
+                "samples_sum" => q::SamplesQuery::Sum,
                 "per_key_sum" => q::SamplesQuery::SumExactKey { key: key0 },
-                "topk_hash" => q::SamplesQuery::SumTopk { limit: 10 },
+                "samples_sum_topk" => q::SamplesQuery::SumTopk { limit: 10 },
                 other => panic!("unsupported samples query {other}"),
             };
             let input = q::SamplesQueryInput {
@@ -458,7 +458,7 @@ fn run_query(epoch_type: &str) {
             }
             let query = match query_kind.as_str() {
                 "hist_percentile" => q::HistogramQuery::P90,
-                "global_sum" => q::HistogramQuery::All,
+                "histogram_all" => q::HistogramQuery::All,
                 other => panic!("unsupported histogram query {other}"),
             };
             let input = q::HistogramQueryInput {

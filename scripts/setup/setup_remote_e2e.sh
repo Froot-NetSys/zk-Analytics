@@ -340,7 +340,7 @@ build_project_on_machine() {
 
         # Build data source
         echo "Building data source..."
-        cargo build --release -p data_source 2>&1 | tail -1
+        cargo build --release -p data_source --features kafka 2>&1 | tail -1
 
         # Build aggregator with kafka + fdb features
         echo "Building aggregator with kafka + fdb..."

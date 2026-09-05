@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run REAL zkVM query proofs at small epoch counts (1/2/4) to anchor the query
-# slowdown with measured data (the paper's Fig. 4 only gives the 16-epoch point).
+# Run the Figure 7 REAL zkVM query proofs at small epoch counts (1/2/4).
 # Uses the self-contained bench_queries binary (in-memory synthetic epochs ->
 # real RISC Zero proof; no FDB/RocksDB needed).
 #
@@ -28,8 +27,8 @@ echo "epoch_type,query,num_epochs,events_per_epoch,keys,prove_ms,verify_ms,max_r
 # Map bench_queries' "query_type" string -> (epoch_type, our query key)
 map_query() {
   case "$1" in
-    samples/sum)      echo "samples global_sum" ;;
-    samples/sum_topk) echo "samples topk_hash" ;;
+    samples/sum)      echo "samples samples_sum" ;;
+    samples/sum_topk) echo "samples samples_sum_topk" ;;
     samples/sum_key)  echo "samples per_key_sum" ;;
     cm/topk)          echo "cm cm_topk" ;;
     cm/estimate)      echo "cm cm_estimate" ;;
@@ -66,4 +65,6 @@ run_group histogram 1024 8 --skip-samples --skip-cm --skip-raw \
 # CM epochs: 8192 keys x 1 event = 8192 logs/epoch.
 run_group cm        8192 1 --skip-samples --skip-histogram --skip-raw
 
-echo "[qproof] done -> $OUT"; column -t -s, "$OUT" || cat "$OUT"
+echo "[qproof] done -> $OUT"
+echo "=== query ==="
+column -t -s, "$OUT" || cat "$OUT"

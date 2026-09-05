@@ -29,14 +29,60 @@ EPOCH_LOGS="${EPOCH_LOGS:-16384}"
 COMMIT_BATCH_SIZE="${COMMIT_BATCH_SIZE:-8}"
 KAFKA_HOST="${KAFKA_HOST:-192.0.2.1}"
 KAFKA_BROKERS="${KAFKA_HOST}:9092"
-FDB_CLUSTER_FILE="${FDB_CLUSTER_FILE:-$HOME/zktel-dist/fdb.cluster}"
 QUERIER_PORT="${QUERIER_PORT:-8090}"
-DIST="$HOME/zktel-dist"           # per-node deploy dir (bin/, lib/)
-REMOTE_ENV="LD_LIBRARY_PATH=$DIST/lib PATH=$HOME/.cargo/bin:\$PATH"
+DIST="${ARTIFACT_REMOTE_DIST_DIR:-$HOME/zktel-dist}" # worker deploy dir (bin/, lib/)
+if [[ -z "${FDB_CLUSTER_FILE:-}" ]]; then
+  if [[ -f /etc/foundationdb/fdb.cluster ]]; then
+    FDB_CLUSTER_FILE=/etc/foundationdb/fdb.cluster
+  else
+    FDB_CLUSTER_FILE="$DIST/fdb.cluster"
+  fi
+fi
+REMOTE_ENV="LD_LIBRARY_PATH=$DIST/lib PATH=\$HOME/.cargo/bin:\$HOME/.risc0/bin:\$PATH"
 AGGR_IDLE_TIMEOUT_SECS="${AGGR_IDLE_TIMEOUT_SECS:-20}"
 MEM_INTERVAL="${MEM_INTERVAL:-1.0}"
 
 source "$ROOT_DIR/scripts/lib/common.sh"
+
+# A fresh setup may have added the user to the docker group without changing
+# the groups of the current shell.  Keep artifact runs one-shot by falling back
+# to passwordless sudo, as setup_local_e2e.sh itself does.
+docker_cmd() {
+  if docker info >/dev/null 2>&1; then
+    docker "$@"
+  elif sudo -n docker info >/dev/null 2>&1; then
+    sudo -n docker "$@"
+  else
+    echo "[dist] ERROR: Docker is unavailable (including via passwordless sudo)" >&2
+    return 1
+  fi
+}
+
+compose_cmd() {
+  if docker info >/dev/null 2>&1; then
+    if docker compose version >/dev/null 2>&1; then docker compose "$@"; else docker-compose "$@"; fi
+  else
+    if sudo -n docker compose version >/dev/null 2>&1; then sudo -n docker compose "$@"; else sudo -n docker-compose "$@"; fi
+  fi
+}
+
+ensure_local_kafka_listener() {
+  docker_cmd inspect kafka >/dev/null 2>&1 || return 0
+  local expected="PLAINTEXT_HOST://${KAFKA_HOST}:9092" advertised compose_file
+  advertised="$(docker_cmd inspect kafka --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^KAFKA_ADVERTISED_LISTENERS=//p')"
+  [[ ",$advertised," == *",$expected,"* ]] && return 0
+  compose_file="$ROOT_DIR/scripts/docker-compose-kafka.yml"
+  [[ -f "$compose_file" ]] || { echo "[dist] ERROR: cannot reconfigure Kafka; $compose_file is missing" >&2; return 1; }
+  echo "[dist] reconfiguring Kafka advertised listener for ${KAFKA_HOST}:9092 ..."
+  compose_cmd -f "$compose_file" down || return 1
+  KAFKA_EXTERNAL_IP="$KAFKA_HOST" compose_cmd -f "$compose_file" up -d || return 1
+  for _ in {1..30}; do
+    timeout 2 bash -c ">/dev/tcp/${KAFKA_HOST}/9092" 2>/dev/null && return 0
+    sleep 1
+  done
+  echo "[dist] ERROR: Kafka did not become ready after listener reconfiguration" >&2
+  return 1
+}
 
 case "$DATASET" in
   google) AGG_MODE=samples; AGG_TYPE=hash_table; TOTAL_LOGS="${TOTAL_LOGS:-131072}"
@@ -63,9 +109,11 @@ EPOCH_BATCH_THRESHOLD=$(( EPOCH_LOGS / COMMIT_BATCH_SIZE ))
 # Unique per-run RocksDB dir prefix so a leftover consumer from a prior run can
 # never collide with / corrupt this run's fresh DB.
 RUNID="${RUNID:-r$(date +%s)}"
-RAWP="/mydata/${RUNID}_raw"; AGGP="/mydata/${RUNID}_agg"
+RUN_ROOT="${RUN_ROOT:-/mydata/zk-analytics-runs}"
+mkdir -p "$RUN_ROOT"
+RAWP="$RUN_ROOT/${RUNID}_raw"; AGGP="$RUN_ROOT/${RUNID}_agg"
 TAG="${DATASET}_${AGG_MODE}_n${NUM_AGGREGATORS}_${MODE}"
-WORK="/mydata/dist_run/$TAG"; LOGDIR="$WORK/logs"
+WORK="$RUN_ROOT/dist_run/$TAG"; LOGDIR="$WORK/logs"
 RESULTS_DIR="$ROOT_DIR/results"; METRICS="$RESULTS_DIR/_dist_metrics.jsonl"
 FDB_SUBSPACE="zktel_dist_${TAG}"; KAFKA_TOPIC="raw_${TAG}"
 mkdir -p "$LOGDIR" "$RESULTS_DIR"
@@ -77,16 +125,51 @@ RISC0_DEV_MODE="${RISC0_DEV_MODE:-0}"
 
 LBIN="$ROOT_DIR/target/release"   # local (node0) binaries
 RBIN="$DIST/bin"                        # remote node binaries
+node_bin() { if [[ "$1" == "$COORD" ]]; then echo "$LBIN"; else echo "$RBIN"; fi; }
+node_memtrace() { if [[ "$1" == "$COORD" ]]; then echo "$ROOT_DIR/scripts/lib/mem_trace.py"; else echo "$RBIN/mem_trace.py"; fi; }
 
-echo "[dist] $DATASET mode=$MODE nodes=$NUM_AGGREGATORS ($NODES_STR) epoch=$EPOCH_LOGS"
+echo "[dist] $DATASET mode=$MODE nodes=$NUM_AGGREGATORS ($NODES_STR) logs_per_epoch=$EPOCH_LOGS total_logs=$TOTAL_LOGS logs_per_commit_batch=$COMMIT_BATCH_SIZE commit_batches_per_epoch=$EPOCH_BATCH_THRESHOLD"
+
+# Fail before resetting shared services if the coordinator build is incomplete.
+for bin in kafka-producer kafka-consumer aggregator querier; do
+  if [[ ! -x "$LBIN/$bin" ]]; then
+    echo "[dist] ERROR: missing coordinator binary: $LBIN/$bin" >&2
+    echo "[dist] Rebuild with: ./scripts/setup/setup_local_e2e.sh --build" >&2
+    exit 2
+  fi
+done
+
+# Fail before cleanup or a long drain wait when the cluster configuration is
+# wrong. KAFKA_HOST must be reachable from every worker for a multi-node run.
+bash "$ROOT_DIR/scripts/lib/check_fdb.sh" "$FDB_CLUSTER_FILE" || exit 2
+for node in "${NODES[@]:1}"; do
+  ssh -o BatchMode=yes -o ConnectTimeout=8 "$node" \
+    "bash -s -- '$DIST/fdb.cluster'" < "$ROOT_DIR/scripts/lib/check_fdb.sh" || exit 2
+done
+ensure_local_kafka_listener || exit 2
+if ! timeout 5 bash -c ">/dev/tcp/${KAFKA_HOST}/9092" 2>/dev/null; then
+  echo "[dist] ERROR: Kafka is not reachable at ${KAFKA_HOST}:9092; set KAFKA_HOST to the coordinator address" >&2
+  exit 2
+fi
+for node in "${NODES[@]:1}"; do
+  if ! ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$node" true >/dev/null 2>&1; then
+    echo "[dist] ERROR: worker '$node' is not reachable with non-interactive SSH" >&2
+    exit 2
+  fi
+  if ! ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$node" \
+      "timeout 5 bash -c '>/dev/tcp/${KAFKA_HOST}/9092'" >/dev/null 2>&1; then
+    echo "[dist] ERROR: Kafka at ${KAFKA_HOST}:9092 is not reachable from worker '$node'" >&2
+    exit 2
+  fi
+done
 
 # run on a node (foreground, blocks): $1=node, rest=command.
-on_node() { local node="$1"; shift; if [ "$node" = "$COORD" ] || [ "$node" = node0 ]; then bash -c "$*"; else ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$node" "$*"; fi; }
+on_node() { local node="$1"; shift; if [ "$node" = "$COORD" ]; then bash -c "$*"; else ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$node" "$*"; fi; }
 
 # launch a long-running command DETACHED on a node and return immediately
 # (setsid so it survives the SSH channel close; cmd handles its own redirects).
 spawn_node() { local node="$1"; shift; local cmd="$*";
-  if [ "$node" = "$COORD" ] || [ "$node" = node0 ]; then
+  if [ "$node" = "$COORD" ]; then
     setsid bash -c "$cmd" </dev/null >/dev/null 2>&1 &
   else
     ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$node" "setsid bash -c '$cmd' </dev/null >/dev/null 2>&1 & echo ok" >/dev/null 2>&1
@@ -96,12 +179,24 @@ spawn_node() { local node="$1"; shift; local cmd="$*";
 # Reliable kill: r0vm has an EMPTY /proc/cmdline so pkill -f never matches it ->
 # must use comm (-x r0vm). The aggregator comm truncates to "zktelemetry-ris".
 # Kill aggregator+consumer FIRST (the aggregator respawns r0vm), then r0vm.
-ALLNODES="node0 node1 node2 node3 node4 node5 node6 node7"
+ALLNODES="$NODES_STR"
 # PID-based kill is reliable; pkill -x/-9 on r0vm races (it survives). r0vm
 # must be killed AFTER the aggregator (which would respawn it).
-KILLPATS='for p in $(pgrep -x zktelemetry-ris); do kill -9 $p 2>/dev/null; done; for p in $(pgrep -x kafka-consumer); do kill -9 $p 2>/dev/null; done; pkill -9 -f mem_trace.py 2>/dev/null; sleep 1; for p in $(pgrep -x r0vm); do kill -9 $p 2>/dev/null; done'
-cleanup() { for n in $ALLNODES; do on_node "$n" "$KILLPATS" >/dev/null 2>&1 || true; done; }
-trap cleanup EXIT INT TERM
+KILLPATS='for name in zktelemetry-ris aggregator kafka-consumer kafka-producer querier r0vm; do pkill -9 -x "$name" 2>/dev/null || true; done; pkill -9 -f "[m]em_trace.py" 2>/dev/null || true'
+cleanup() {
+  for n in $ALLNODES; do
+    if [[ "$n" == "$COORD" ]]; then
+      timeout 5 bash -c "$KILLPATS" >/dev/null 2>&1 || true
+    else
+      timeout 8 ssh -n -o BatchMode=yes -o ConnectTimeout=5 "$n" "$KILLPATS" \
+        >/dev/null 2>&1 || true
+    fi
+  done
+}
+on_signal() { local code="$1"; trap - EXIT INT TERM; cleanup; exit "$code"; }
+trap cleanup EXIT
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
 
 # Hard pre-run nuke: kill everything on ALL nodes and WAIT until every node is
 # idle (no r0vm / aggregator) so each experiment starts on a clean machine.
@@ -119,10 +214,14 @@ done
 
 # ---- clean slate ----------------------------------------------------------
 echo "[dist] reset FDB + topic + per-node raw dirs ..."
-FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" bash "$ROOT_DIR/scripts/setup/reset_fdb.sh" "$FDB_SUBSPACE" >/dev/null 2>&1 || true
-docker exec kafka kafka-topics --bootstrap-server localhost:9092 --delete --topic "$KAFKA_TOPIC" >/dev/null 2>&1 || true
+FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" bash "$ROOT_DIR/scripts/setup/reset_fdb.sh" "$FDB_SUBSPACE" || exit 2
+docker_cmd exec kafka kafka-topics --bootstrap-server localhost:9092 --delete --topic "$KAFKA_TOPIC" >/dev/null 2>&1 || true
 sleep 1
-docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic "$KAFKA_TOPIC" --partitions "$NUM_AGGREGATORS" --replication-factor 1 >/dev/null 2>&1 || true
+if ! docker_cmd exec kafka kafka-topics --bootstrap-server localhost:9092 \
+    --create --topic "$KAFKA_TOPIC" --partitions "$NUM_AGGREGATORS" --replication-factor 1; then
+  echo "[dist] ERROR: failed to create Kafka topic $KAFKA_TOPIC" >&2
+  exit 2
+fi
 # Fresh unique RocksDB dirs (nodes already idle from the pre-run nuke; the
 # RUNID prefix guarantees no collision with any leftover dir).
 for ((i=0;i<NUM_AGGREGATORS;i++)); do
@@ -133,7 +232,8 @@ sleep 1
 # ---- 1) consumers on each node -------------------------------------------
 echo "[dist] starting $NUM_AGGREGATORS kafka-consumers (one per node) ..."
 for ((i=0;i<NUM_AGGREGATORS;i++)); do
-  spawn_node "${NODES[i]}" "cd $RBIN && env $REMOTE_ENV E2E_TIMING=1 KAFKA_BROKERS=$KAFKA_BROKERS KAFKA_TOPIC=$KAFKA_TOPIC KAFKA_GROUP_ID=cg_${TAG}_$i KAFKA_PARTITION_ID=$i RAW_DB_PATH=${RAWP}_$i EPOCH_BATCH_THRESHOLD=$EPOCH_BATCH_THRESHOLD EPOCH_TIMEOUT_MS=600000 ./kafka-consumer > /tmp/dist_consumer_$i.log 2>&1"
+  BDIR="$(node_bin "${NODES[i]}")"
+  spawn_node "${NODES[i]}" "cd $BDIR && env $REMOTE_ENV E2E_TIMING=1 KAFKA_BROKERS=$KAFKA_BROKERS KAFKA_TOPIC=$KAFKA_TOPIC KAFKA_GROUP_ID=cg_${TAG}_$i KAFKA_PARTITION_ID=$i RAW_DB_PATH=${RAWP}_$i EPOCH_BATCH_THRESHOLD=$EPOCH_BATCH_THRESHOLD EPOCH_TIMEOUT_MS=600000 ./kafka-consumer > /tmp/dist_consumer_$i.log 2>&1"
 done
 sleep 5
 
@@ -148,15 +248,27 @@ if [ "$BENCH_INPUT" = synthetic ]; then
   for ((s=0;s<NUM_AGGREGATORS;s++)); do
     env BENCH_INPUT=synthetic KAFKA_BROKERS="$KAFKA_BROKERS" KAFKA_TOPIC="$KAFKA_TOPIC" \
       NUM_AGGREGATORS="$NUM_AGGREGATORS" SOURCE_ID="$s" \
-      "$LBIN/kafka-producer" --events "$per" --commit-batch-size "$COMMIT_BATCH_SIZE" --key-mod "$kps" \
+      "$LBIN/kafka-producer" --events "$per" --commit-batch-size "$COMMIT_BATCH_SIZE" --key-cardinality "$kps" \
       > "$LOGDIR/producer_$s.log" 2>&1 &
     pp+=($!)
   done
-  for p in "${pp[@]}"; do wait "$p"; done
+  producer_failed=0
+  for p in "${pp[@]}"; do
+    if ! wait "$p"; then producer_failed=1; fi
+  done
+  if [[ "$producer_failed" -ne 0 ]]; then
+    echo "[dist] ERROR: one or more synthetic producers failed" >&2
+    tail -100 "$LOGDIR"/producer_*.log >&2
+    exit 3
+  fi
 else
-env BENCH_INPUT="$BENCH_INPUT" "${DATASET_ENV[@]}" KAFKA_BROKERS="$KAFKA_BROKERS" KAFKA_TOPIC="$KAFKA_TOPIC" \
-  NUM_AGGREGATORS="$NUM_AGGREGATORS" PARALLEL_PRODUCERS="$NUM_AGGREGATORS" DISTRIBUTE_EVENLY=0 \
-  "$LBIN/kafka-producer" --events "$TOTAL_LOGS" --commit-batch-size "$COMMIT_BATCH_SIZE" > "$LOGDIR/producer.log" 2>&1
+if ! env BENCH_INPUT="$BENCH_INPUT" "${DATASET_ENV[@]}" KAFKA_BROKERS="$KAFKA_BROKERS" KAFKA_TOPIC="$KAFKA_TOPIC" \
+    NUM_AGGREGATORS="$NUM_AGGREGATORS" PARALLEL_PRODUCERS="$NUM_AGGREGATORS" DISTRIBUTE_EVENLY=0 \
+    "$LBIN/kafka-producer" --events "$TOTAL_LOGS" --commit-batch-size "$COMMIT_BATCH_SIZE" > "$LOGDIR/producer.log" 2>&1; then
+  echo "[dist] ERROR: producer failed" >&2
+  tail -100 "$LOGDIR/producer.log" >&2
+  exit 3
+fi
 fi
 
 # Wait for Kafka drain by checking consumer LAG -> 0 across all groups. This is
@@ -165,16 +277,25 @@ fi
 # TOTAL_LOGS-based check compared events to messages and never converged).
 # Break when every group has consumed everything (lag==0) and >0 messages seen.
 echo "[dist] waiting for Kafka drain (consumer lag -> 0) ..."
+drained=0
 for ((t=0;t<300;t+=3)); do
   LAG=0; CUR=0
   for ((i=0;i<NUM_AGGREGATORS;i++)); do
-    read l c < <(docker exec kafka kafka-consumer-groups --bootstrap-server localhost:9092 --describe --group "cg_${TAG}_$i" 2>/dev/null \
+    read l c < <(docker_cmd exec kafka kafka-consumer-groups --bootstrap-server localhost:9092 --describe --group "cg_${TAG}_$i" 2>/dev/null \
       | awk 'NR>1 && $6 ~ /^[0-9]+$/ {lag+=$6} NR>1 && $4 ~ /^[0-9]+$/ {cur+=$4} END{print lag+0, cur+0}')
     LAG=$((LAG+${l:-0})); CUR=$((CUR+${c:-0}))
   done
-  [ "${CUR:-0}" -gt 0 ] && [ "${LAG:-0}" -eq 0 ] && { echo "[dist] drained: lag=0 consumed_msgs=$CUR"; break; }
+  [ "${CUR:-0}" -gt 0 ] && [ "${LAG:-0}" -eq 0 ] && {
+    echo "[dist] drained: lag=0 consumed_msgs=$CUR"
+    drained=1
+    break
+  }
   sleep 3
 done
+if [ "$drained" -ne 1 ]; then
+  echo "[dist] ERROR: Kafka did not drain within 300 seconds (lag=${LAG:-unknown}, consumed_msgs=${CUR:-unknown})" >&2
+  exit 3
+fi
 sleep 2
 for ((i=0;i<NUM_AGGREGATORS;i++)); do on_node "${NODES[i]}" "pkill -TERM -f 'kafka-consumer' 2>/dev/null" >/dev/null 2>&1; done
 sleep 4
@@ -187,21 +308,51 @@ echo "[dist] running $NUM_AGGREGATORS aggregators in parallel (mode=$MODE) ..."
 ALOG="/tmp/${RUNID}_agg"; AMEM="/tmp/${RUNID}_mem"
 AGG_START=$(date +%s.%N)
 for ((i=0;i<NUM_AGGREGATORS;i++)); do
+  BDIR="$(node_bin "${NODES[i]}")"
+  if [[ "${NODES[i]}" == "$COORD" ]]; then
+    NODE_FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE"
+  else
+    NODE_FDB_CLUSTER_FILE="$DIST/fdb.cluster"
+  fi
+  MEMTRACE="$(node_memtrace "${NODES[i]}")"
   spawn_node "${NODES[i]}" "rm -f ${ALOG}_$i.DONE; \
-    nohup python3 $RBIN/mem_trace.py --out ${AMEM}_$i.csv --summary ${AMEM}_$i.json --match aggregator --match r0vm --interval $MEM_INTERVAL > /dev/null 2>&1 & \
-    env $REMOTE_ENV E2E_TIMING=1 RISC0_DEV_MODE=$RISC0_DEV_MODE NO_ZKVM_PROOF=$NO_ZKVM_PROOF RAW_ROCKSDB_PATH=${RAWP}_$i AGG_ROCKSDB_PATH=${AGGP}_$i AGGREGATOR_ID=$i FDB_CLUSTER_FILE=$FDB_CLUSTER_FILE FDB_SUBSPACE=$FDB_SUBSPACE AGGR_IDLE_TIMEOUT_SECS=$AGGR_IDLE_TIMEOUT_SECS AGGR_PIPELINE=rocksdb RAYON_NUM_THREADS=56 \
-    /usr/bin/time -v $RBIN/aggregator --rocksdb --mode $AGG_MODE --threads 56 > ${ALOG}_$i.log 2> ${ALOG}_${i}_time.log; \
-    pkill -INT -f mem_trace.py 2>/dev/null; sleep 3; touch ${ALOG}_$i.DONE"
+    rm -f ${AMEM}_$i.csv ${AMEM}_$i.json; \
+    nohup python3 $MEMTRACE --out ${AMEM}_$i.csv --summary ${AMEM}_$i.json --match aggregator --match r0vm --interval $MEM_INTERVAL > /dev/null 2>&1 & \
+    for attempt in \$(seq 1 100); do test -s ${AMEM}_$i.csv && break; sleep 0.01; done; \
+    env $REMOTE_ENV E2E_TIMING=1 RISC0_DEV_MODE=$RISC0_DEV_MODE NO_ZKVM_PROOF=$NO_ZKVM_PROOF RAW_ROCKSDB_PATH=${RAWP}_$i AGG_ROCKSDB_PATH=${AGGP}_$i AGGREGATOR_ID=$i FDB_CLUSTER_FILE=$NODE_FDB_CLUSTER_FILE FDB_SUBSPACE=$FDB_SUBSPACE AGGR_IDLE_TIMEOUT_SECS=$AGGR_IDLE_TIMEOUT_SECS AGGR_PIPELINE=rocksdb RAYON_NUM_THREADS=56 \
+    /usr/bin/time -v $BDIR/aggregator --rocksdb --mode $AGG_MODE --threads 56 > ${ALOG}_$i.log 2> ${ALOG}_${i}_time.log; \
+    status=\$?; echo \$status > ${ALOG}_$i.EXIT; \
+    pkill -INT -f '[m]em_trace.py' 2>/dev/null; sleep 3; touch ${ALOG}_$i.DONE"
 done
 # Poll each node for its DONE marker (cheap test -f over SSH; no long-held channel).
-AGG_MAX_WAIT="${AGG_MAX_WAIT:-20000}"
+if [ "$MODE" = native ]; then
+  AGG_MAX_WAIT="${AGG_MAX_WAIT:-600}"
+else
+  AGG_MAX_WAIT="${AGG_MAX_WAIT:-20000}"
+fi
 for ((i=0;i<NUM_AGGREGATORS;i++)); do
+  node_done=0
   for ((t=0;t<AGG_MAX_WAIT;t+=10)); do
-    on_node "${NODES[i]}" "test -f ${ALOG}_$i.DONE" 2>/dev/null && break
+    if on_node "${NODES[i]}" "test -f ${ALOG}_$i.DONE" 2>/dev/null; then
+      node_done=1
+      break
+    fi
     sleep 10
   done
+  if [ "$node_done" -ne 1 ]; then
+    echo "[dist] ERROR: aggregator $i did not finish within ${AGG_MAX_WAIT} seconds" >&2
+    exit 4
+  fi
 done
 AGG_END=$(date +%s.%N)
+for ((i=0;i<NUM_AGGREGATORS;i++)); do
+  code="$(on_node "${NODES[i]}" "cat ${ALOG}_$i.EXIT")"
+  if [[ "$code" != 0 ]]; then
+    echo "[dist] ERROR: aggregator $i exited with status $code" >&2
+    on_node "${NODES[i]}" "tail -60 ${ALOG}_${i}_time.log" >&2
+    exit 4
+  fi
+done
 echo "[dist] all aggregators done; collecting ..."
 
 # Robust collect: retry the stdout log until non-empty.
@@ -224,13 +375,22 @@ QMEM=$!
   FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" FDB_SUBSPACE="$FDB_SUBSPACE" HTTP_LISTEN="0.0.0.0:$QUERIER_PORT" \
   "$LBIN/querier" > "$LOGDIR/querier.log" 2>&1 &
 QPID=$!
-for _ in $(seq 1 60); do curl -s -o /dev/null -m 2 "localhost:$QUERIER_PORT/query" -H 'content-type: application/json' -d "$QUERY_JSON" && break; sleep 1; done
-for _ in 1 2 3; do curl -s -m 1200 "localhost:$QUERIER_PORT/query" -H 'content-type: application/json' -d "$QUERY_JSON" >> "$LOGDIR/query_response.json" 2>/dev/null || true; done
+query_ready=0
+for _ in $(seq 1 60); do
+  timeout 1 bash -c ">/dev/tcp/localhost/$QUERIER_PORT" 2>/dev/null && { query_ready=1; break; }
+  sleep 1
+done
+[[ "$query_ready" == 1 ]] || { echo '[dist] ERROR: querier did not start' >&2; exit 5; }
+for attempt in 1 2 3; do
+  curl --fail --silent --show-error -m "${QUERY_TIMEOUT_SECS:-1200}" \
+    "localhost:$QUERIER_PORT/query" -H 'content-type: application/json' -d "$QUERY_JSON" \
+    -o "$LOGDIR/query_response_$attempt.json" || exit 5
+done
 sleep 1; kill -INT "$QMEM" 2>/dev/null; wait "$QMEM" 2>/dev/null; kill -TERM "$QPID" 2>/dev/null; wait "$QPID" 2>/dev/null
 
 # ---- 5) parse -> metrics --------------------------------------------------
 AGG_WALL=$(python3 -c "print(f'{$AGG_END-$AGG_START:.3f}')")
 python3 "$ROOT_DIR/scripts/lib/_parse_dist_cell.py" --dataset "$DATASET" --agg-type "$AGG_TYPE" --mode "$MODE" \
   --epoch-size "$EPOCH_LOGS" --num-aggregators "$NUM_AGGREGATORS" --workdir "$WORK" --logdir "$LOGDIR" \
-  --agg-wall "$AGG_WALL" --metrics "$METRICS"
+  --agg-wall "$AGG_WALL" --expected-logs "$TOTAL_LOGS" --metrics "$METRICS" || exit 6
 echo "[dist] done: $TAG"

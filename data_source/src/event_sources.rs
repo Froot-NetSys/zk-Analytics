@@ -1009,7 +1009,7 @@ impl SyntheticEventSource {
     pub fn next_event(
         &mut self,
         rng: &mut impl rand::Rng,
-        key_mod: u64,
+        key_cardinality: u64,
         value_mod: u32,
         source_id: u32,
     ) -> Option<BenchEvent> {
@@ -1018,7 +1018,7 @@ impl SyntheticEventSource {
         }
 
         let ts = now_ts();
-        let key_index = rng.gen::<u64>() % key_mod;
+        let key_index = rng.gen::<u64>() % key_cardinality;
 
         // Generate 15-byte key_id unique per source:
         // - Bytes 3-6 (4 bytes): source_id

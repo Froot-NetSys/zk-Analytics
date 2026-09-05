@@ -131,6 +131,9 @@ def main():
 
     with open(args.out, "w") as out:
         out.write("timestamp,process,pid,RSS_MB,VSZ_MB,CPU_percent\n")
+        # Let short-lived benchmark runners wait until the tracer is ready
+        # before launching the measured process.
+        out.flush()
         while not stop["flag"]:
             now = time.time()
             # Resolve target PIDs each tick so newly-spawned workers are caught.

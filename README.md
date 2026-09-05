@@ -6,7 +6,15 @@ log commitments and zero-knowledge proofs of correct aggregation and query
 execution, so an external verifier can check reported results **without** access to
 raw logs or the provider's infrastructure. Proofs are generated with the
 [RISC Zero](https://risczero.com) zkVM. This repository is the implementation
-described in the paper *"Zero-Knowledge Cloud Analytics."*
+described in the paper [*"Zero-Knowledge Cloud
+Analytics"*](https://dl.acm.org/doi/10.1145/3789240.3829157).
+
+## Artifact evaluation (SIGCOMM 2026)
+
+Reviewers should start with the **[Artifact Evaluation
+Guide](docs/ARTIFACT-EVALUATION.md)** for the artifact description, hardware
+requirements, installation, quick-start commands, and the mapping from
+evaluation scripts to paper figures and tables.
 
 ## Architecture
 
