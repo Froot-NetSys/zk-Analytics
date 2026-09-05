@@ -129,8 +129,11 @@ fi
 if (( DEPLOY )); then
   [[ -f "$FDB_SOURCE" ]] || { echo "FDB cluster file not found: $FDB_SOURCE" >&2; exit 2; }
   echo "[artifact-setup] building coordinator binaries"
-  (cd "$ROOT" && cargo build --release -p aggregator --features kafka \
-    --bin aggregator --bin kafka-consumer)
+  (cd "$ROOT" && \
+    cargo build --release -p data_source --features kafka --bin kafka-producer && \
+    cargo build --release -p aggregator --features "kafka fdb" \
+      --bin aggregator --bin kafka-consumer && \
+    cargo build --release -p querier --features fdb --bin querier)
   for target in "${NORMALIZED[@]:1}"; do
     echo "[artifact-setup] deploying worker files to $target:$REMOTE_DIST"
     ssh -n "$target" "mkdir -p '$REMOTE_DIST/bin' '$REMOTE_DIST/lib'"

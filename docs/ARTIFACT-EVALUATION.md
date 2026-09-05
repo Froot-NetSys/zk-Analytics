@@ -155,10 +155,11 @@ is not found immediately after installation, source `$HOME/.cargo/env` and add
 
 ```bash
 mkdir -p target/tmp            # required by .cargo/config.toml (EXDEV workaround)
-cargo build --release          # host crates + RISC Zero guest ELFs
+./scripts/setup/setup_local_e2e.sh --build  # pipeline binaries + zkVM guest ELFs
 ```
 
-A successful build compiles all host crates and the zkVM guest ELFs. Complete
+A successful build compiles the feature-gated Kafka producer/consumer,
+FoundationDB-backed aggregator/querier, and the zkVM guest ELFs. Complete
 both Step 1 commands as the functional check; building by itself does not
 exercise the analytics or proving paths.
 

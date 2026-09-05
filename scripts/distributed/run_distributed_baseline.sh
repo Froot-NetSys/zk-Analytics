@@ -90,6 +90,15 @@ node_memtrace() { if [[ "$1" == "$COORD" ]]; then echo "$ROOT_DIR/scripts/lib/me
 
 echo "[dist] $DATASET mode=$MODE nodes=$NUM_AGGREGATORS ($NODES_STR) logs_per_epoch=$EPOCH_LOGS total_logs=$TOTAL_LOGS logs_per_commit_batch=$COMMIT_BATCH_SIZE commit_batches_per_epoch=$EPOCH_BATCH_THRESHOLD"
 
+# Fail before resetting shared services if the coordinator build is incomplete.
+for bin in kafka-producer kafka-consumer aggregator querier; do
+  if [[ ! -x "$LBIN/$bin" ]]; then
+    echo "[dist] ERROR: missing coordinator binary: $LBIN/$bin" >&2
+    echo "[dist] Rebuild with: ./scripts/setup/setup_local_e2e.sh --build" >&2
+    exit 2
+  fi
+done
+
 # Fail before cleanup or a long drain wait when the cluster configuration is
 # wrong. KAFKA_HOST must be reachable from every worker for a multi-node run.
 if ! timeout 5 bash -c ">/dev/tcp/${KAFKA_HOST}/9092" 2>/dev/null; then
@@ -193,11 +202,23 @@ if [ "$BENCH_INPUT" = synthetic ]; then
       > "$LOGDIR/producer_$s.log" 2>&1 &
     pp+=($!)
   done
-  for p in "${pp[@]}"; do wait "$p"; done
+  producer_failed=0
+  for p in "${pp[@]}"; do
+    if ! wait "$p"; then producer_failed=1; fi
+  done
+  if [[ "$producer_failed" -ne 0 ]]; then
+    echo "[dist] ERROR: one or more synthetic producers failed" >&2
+    tail -100 "$LOGDIR"/producer_*.log >&2
+    exit 3
+  fi
 else
-env BENCH_INPUT="$BENCH_INPUT" "${DATASET_ENV[@]}" KAFKA_BROKERS="$KAFKA_BROKERS" KAFKA_TOPIC="$KAFKA_TOPIC" \
-  NUM_AGGREGATORS="$NUM_AGGREGATORS" PARALLEL_PRODUCERS="$NUM_AGGREGATORS" DISTRIBUTE_EVENLY=0 \
-  "$LBIN/kafka-producer" --events "$TOTAL_LOGS" --commit-batch-size "$COMMIT_BATCH_SIZE" > "$LOGDIR/producer.log" 2>&1
+if ! env BENCH_INPUT="$BENCH_INPUT" "${DATASET_ENV[@]}" KAFKA_BROKERS="$KAFKA_BROKERS" KAFKA_TOPIC="$KAFKA_TOPIC" \
+    NUM_AGGREGATORS="$NUM_AGGREGATORS" PARALLEL_PRODUCERS="$NUM_AGGREGATORS" DISTRIBUTE_EVENLY=0 \
+    "$LBIN/kafka-producer" --events "$TOTAL_LOGS" --commit-batch-size "$COMMIT_BATCH_SIZE" > "$LOGDIR/producer.log" 2>&1; then
+  echo "[dist] ERROR: producer failed" >&2
+  tail -100 "$LOGDIR/producer.log" >&2
+  exit 3
+fi
 fi
 
 # Wait for Kafka drain by checking consumer LAG -> 0 across all groups. This is
