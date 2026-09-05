@@ -15,6 +15,14 @@ This repository accompanies [*Zero-Knowledge Cloud Analytics* (SIGCOMM 2026)](ht
 [Distributed setup](docs/DISTRIBUTED_SETUP.md) ·
 [Citation](CITATION.cff)
 
+## SIGCOMM 2026 Artifact Evaluation
+
+**SIGCOMM 2026 artifact evaluation reviewers: please start with the
+[Artifact Evaluation Guide](docs/ARTIFACT-EVALUATION.md).**
+The guide provides hardware and software requirements, setup instructions,
+functional checks, and step-by-step commands to reproduce the paper's figures
+and tables, including expected outputs and troubleshooting.
+
 ## Overview
 
 The pipeline separates online ingestion from offline aggregation and queries:
