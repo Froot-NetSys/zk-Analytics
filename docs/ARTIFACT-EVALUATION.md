@@ -2,7 +2,7 @@
 
 ## Artifact description
 
-This artifact contains the source code, datasets that may be redistributed, and
+This artifact contains the source code and
 instructions needed to reproduce the experiments in *"Zero-Knowledge Cloud
 Analytics."* More precisely, it contains:
 
