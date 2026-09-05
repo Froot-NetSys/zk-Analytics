@@ -19,6 +19,7 @@ set -uo pipefail
 #   results/zkvm_dev_query.csv         (same schema as the Figure 7 ZK CSV)
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
+mkdir -p "$ROOT_DIR/results"
 
 export LIBCLANG_PATH="${LIBCLANG_PATH:-/usr/lib/llvm-14/lib}"
 source "$ROOT_DIR/scripts/lib/common.sh"

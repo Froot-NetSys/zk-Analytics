@@ -277,7 +277,7 @@ def build_breakdown_csv(agg_rows, query_rows):
 
     # Query = hash-table global sum, 16 epochs.
     qr = next(r for r in query_rows
-              if r[0] == "Global sum" and r[2] == 16)
+              if r[0] == "Samples sum" and r[2] == 16)
     nat_q_s = float(qr[4])
     zk_q_prove_s = _f(qr[6])
     zk_q_verify_s = _f(qr[7])
@@ -420,7 +420,7 @@ def build_summary(agg_rows, query_rows, breakdown_rows):
             float(r[5]), float(r[8]), float(r[11]),  # nat_single, zk_prove, slowdown_matched
             float(r[10]),  # slowdown_single
         ))
-    qr = next(r for r in query_rows if r[0] == "Global sum" and r[2] == 16)
+    qr = next(r for r in query_rows if r[0] == "Samples sum" and r[2] == 16)
     q_nat, q_zk = float(qr[4]), float(qr[6])
     q_slow = q_zk / q_nat
 

@@ -168,6 +168,7 @@ fi
 
 if (( DEPLOY )); then
   [[ -f "$FDB_SOURCE" ]] || { echo "FDB cluster file not found: $FDB_SOURCE" >&2; exit 2; }
+  bash "$ROOT/scripts/lib/check_fdb.sh" "$FDB_SOURCE"
   echo "[artifact-setup] building coordinator binaries"
   (cd "$ROOT" && \
     cargo build --release -p data_source --features kafka --bin kafka-producer && \
@@ -183,6 +184,8 @@ if (( DEPLOY )); then
       "$ROOT/target/release/querier" \
       "$ROOT/scripts/lib/mem_trace.py" "$target:$REMOTE_DIST/bin/"
     scp -q "$FDB_SOURCE" "$target:$REMOTE_DIST/fdb.cluster"
+    ssh -n "$target" 'command -v python3 && command -v fdbcli' >/dev/null
+    ssh "$target" "bash -s -- '$REMOTE_DIST/fdb.cluster'" < "$ROOT/scripts/lib/check_fdb.sh"
     ssh -n "$target" "chmod +x '$REMOTE_DIST/bin/kafka-producer' '$REMOTE_DIST/bin/kafka-consumer' '$REMOTE_DIST/bin/aggregator' '$REMOTE_DIST/bin/querier' '$REMOTE_DIST/bin/mem_trace.py'"
     ssh -n "$target" "test -x '$REMOTE_DIST/bin/kafka-producer' && test -x '$REMOTE_DIST/bin/kafka-consumer' && test -x '$REMOTE_DIST/bin/aggregator' && test -x '$REMOTE_DIST/bin/querier' && test -x '$REMOTE_DIST/bin/mem_trace.py' && test -r '$REMOTE_DIST/fdb.cluster'"
   done

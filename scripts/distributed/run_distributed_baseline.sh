@@ -141,6 +141,11 @@ done
 
 # Fail before cleanup or a long drain wait when the cluster configuration is
 # wrong. KAFKA_HOST must be reachable from every worker for a multi-node run.
+bash "$ROOT_DIR/scripts/lib/check_fdb.sh" "$FDB_CLUSTER_FILE" || exit 2
+for node in "${NODES[@]:1}"; do
+  ssh -o BatchMode=yes -o ConnectTimeout=8 "$node" \
+    "bash -s -- '$DIST/fdb.cluster'" < "$ROOT_DIR/scripts/lib/check_fdb.sh" || exit 2
+done
 ensure_local_kafka_listener || exit 2
 if ! timeout 5 bash -c ">/dev/tcp/${KAFKA_HOST}/9092" 2>/dev/null; then
   echo "[dist] ERROR: Kafka is not reachable at ${KAFKA_HOST}:9092; set KAFKA_HOST to the coordinator address" >&2
@@ -209,7 +214,7 @@ done
 
 # ---- clean slate ----------------------------------------------------------
 echo "[dist] reset FDB + topic + per-node raw dirs ..."
-FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" bash "$ROOT_DIR/scripts/setup/reset_fdb.sh" "$FDB_SUBSPACE" >/dev/null 2>&1 || true
+FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" bash "$ROOT_DIR/scripts/setup/reset_fdb.sh" "$FDB_SUBSPACE" || exit 2
 docker_cmd exec kafka kafka-topics --bootstrap-server localhost:9092 --delete --topic "$KAFKA_TOPIC" >/dev/null 2>&1 || true
 sleep 1
 if ! docker_cmd exec kafka kafka-topics --bootstrap-server localhost:9092 \
@@ -316,6 +321,7 @@ for ((i=0;i<NUM_AGGREGATORS;i++)); do
     for attempt in \$(seq 1 100); do test -s ${AMEM}_$i.csv && break; sleep 0.01; done; \
     env $REMOTE_ENV E2E_TIMING=1 RISC0_DEV_MODE=$RISC0_DEV_MODE NO_ZKVM_PROOF=$NO_ZKVM_PROOF RAW_ROCKSDB_PATH=${RAWP}_$i AGG_ROCKSDB_PATH=${AGGP}_$i AGGREGATOR_ID=$i FDB_CLUSTER_FILE=$NODE_FDB_CLUSTER_FILE FDB_SUBSPACE=$FDB_SUBSPACE AGGR_IDLE_TIMEOUT_SECS=$AGGR_IDLE_TIMEOUT_SECS AGGR_PIPELINE=rocksdb RAYON_NUM_THREADS=56 \
     /usr/bin/time -v $BDIR/aggregator --rocksdb --mode $AGG_MODE --threads 56 > ${ALOG}_$i.log 2> ${ALOG}_${i}_time.log; \
+    status=\$?; echo \$status > ${ALOG}_$i.EXIT; \
     pkill -INT -f '[m]em_trace.py' 2>/dev/null; sleep 3; touch ${ALOG}_$i.DONE"
 done
 # Poll each node for its DONE marker (cheap test -f over SSH; no long-held channel).
@@ -339,6 +345,14 @@ for ((i=0;i<NUM_AGGREGATORS;i++)); do
   fi
 done
 AGG_END=$(date +%s.%N)
+for ((i=0;i<NUM_AGGREGATORS;i++)); do
+  code="$(on_node "${NODES[i]}" "cat ${ALOG}_$i.EXIT")"
+  if [[ "$code" != 0 ]]; then
+    echo "[dist] ERROR: aggregator $i exited with status $code" >&2
+    on_node "${NODES[i]}" "tail -60 ${ALOG}_${i}_time.log" >&2
+    exit 4
+  fi
+done
 echo "[dist] all aggregators done; collecting ..."
 
 # Robust collect: retry the stdout log until non-empty.
@@ -361,13 +375,22 @@ QMEM=$!
   FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" FDB_SUBSPACE="$FDB_SUBSPACE" HTTP_LISTEN="0.0.0.0:$QUERIER_PORT" \
   "$LBIN/querier" > "$LOGDIR/querier.log" 2>&1 &
 QPID=$!
-for _ in $(seq 1 60); do curl -s -o /dev/null -m 2 "localhost:$QUERIER_PORT/query" -H 'content-type: application/json' -d "$QUERY_JSON" && break; sleep 1; done
-for _ in 1 2 3; do curl -s -m 1200 "localhost:$QUERIER_PORT/query" -H 'content-type: application/json' -d "$QUERY_JSON" >> "$LOGDIR/query_response.json" 2>/dev/null || true; done
+query_ready=0
+for _ in $(seq 1 60); do
+  timeout 1 bash -c ">/dev/tcp/localhost/$QUERIER_PORT" 2>/dev/null && { query_ready=1; break; }
+  sleep 1
+done
+[[ "$query_ready" == 1 ]] || { echo '[dist] ERROR: querier did not start' >&2; exit 5; }
+for attempt in 1 2 3; do
+  curl --fail --silent --show-error -m "${QUERY_TIMEOUT_SECS:-1200}" \
+    "localhost:$QUERIER_PORT/query" -H 'content-type: application/json' -d "$QUERY_JSON" \
+    -o "$LOGDIR/query_response_$attempt.json" || exit 5
+done
 sleep 1; kill -INT "$QMEM" 2>/dev/null; wait "$QMEM" 2>/dev/null; kill -TERM "$QPID" 2>/dev/null; wait "$QPID" 2>/dev/null
 
 # ---- 5) parse -> metrics --------------------------------------------------
 AGG_WALL=$(python3 -c "print(f'{$AGG_END-$AGG_START:.3f}')")
 python3 "$ROOT_DIR/scripts/lib/_parse_dist_cell.py" --dataset "$DATASET" --agg-type "$AGG_TYPE" --mode "$MODE" \
   --epoch-size "$EPOCH_LOGS" --num-aggregators "$NUM_AGGREGATORS" --workdir "$WORK" --logdir "$LOGDIR" \
-  --agg-wall "$AGG_WALL" --metrics "$METRICS"
+  --agg-wall "$AGG_WALL" --expected-logs "$TOTAL_LOGS" --metrics "$METRICS" || exit 6
 echo "[dist] done: $TAG"

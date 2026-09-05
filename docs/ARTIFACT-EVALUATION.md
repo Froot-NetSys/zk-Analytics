@@ -99,6 +99,21 @@ Kafka/FoundationDB containers:
 ./scripts/setup/setup_local_e2e.sh --all
 ```
 
+For a new distributed coordinator, set its private IPv4 address when creating
+FoundationDB so both coordinator and workers can reach the advertised server:
+
+```bash
+FDB_PUBLIC_ADDRESS=10.10.1.1 ./scripts/setup/setup_local_e2e.sh --all
+```
+
+Replace `10.10.1.1` with your coordinator's private IPv4 address. This selects
+host networking for a newly created FDB container. Existing FDB containers are
+preserved; this command does not migrate their data or change their network
+configuration. For an existing deployment, provide a cluster file whose
+coordinator and storage-server addresses are reachable from every worker.
+Deployment and each distributed run check database availability from all nodes
+with `fdbcli`; an inaccessible database aborts the run before shared-state reset.
+
 The script invokes `sudo`. If it adds your account to the `docker` group, log
 out and back in before running Docker without `sudo`.
 
@@ -139,8 +154,20 @@ is not found immediately after installation, source `$HOME/.cargo/env` and add
 
 ```bash
 mkdir -p target/tmp            # required by .cargo/config.toml (EXDEV workaround)
-./scripts/setup/setup_local_e2e.sh --build  # pipeline binaries + zkVM guest ELFs
+# Option A: pipeline binaries + zkVM guest ELFs
+./scripts/setup/setup_local_e2e.sh --build
 ```
+
+If you chose Option B, build only the standalone functional-check binaries:
+
+```bash
+cargo build --release -p native-baseline
+cargo build --release -p aggregator --bin aggregator
+cargo build --release -p querier-host --bin bench_queries
+```
+
+Option B does not install the FoundationDB client or Kafka build dependencies.
+Complete Option A before building or running the distributed pipeline.
 
 A successful build compiles the feature-gated Kafka producer/consumer,
 FoundationDB-backed aggregator/querier, and the zkVM guest ELFs. Complete
@@ -463,7 +490,7 @@ KAFKA_HOST=<coordinator-private-address> make eval-fig4-vehicle-dev
 ```
 
 Expected output: `results/e2e_dev_zk/vehicle_dev_zk.jsonl`. This validates the
-complete distributed path but does not produce a cryptographic proof. For the
+distributed execution checks below but does not produce a cryptographic proof. For the
 real-ZK run on the same topology:
 
 ```bash
@@ -472,6 +499,22 @@ KAFKA_HOST=<coordinator-private-address> make eval-fig4-vehicle-zk
 
 Expected output: `results/e2e_real_zk/vehicle_real_zk.jsonl`. Only this second
 command may be used for proof-generation and proof-verification performance.
+
+A successful run requires zero exit codes from every aggregator, nonempty
+epoch timing records on every selected node, the requested number of ingested
+logs, and three successful JSON query responses. The result records
+`ingested_logs` and `epochs_per_node`. Missing timing records cause failure
+instead of becoming zero-valued measurements. In real-ZK mode, receipt
+verification is performed by the pipeline and proof records must be present.
+These checks do not replace an independent comparison of query values against
+a reference computation over the input dataset.
+
+`total_time_s` in the aggregation record is the slowest node's sum of epoch
+times; it excludes ingestion and orchestration. `agg_wall_clock_s` includes
+launching, polling and shutdown. Neither field alone is full pipeline latency.
+The current Figure 4 PDF labels aggregation and query times separately. It is
+a diagnostic plot; matching the paper's Figure 4 panels and time definitions
+requires checking the published figure before interpreting it as reproduction.
 
 #### Table 2 — vanilla baseline on the end-to-end setups
 

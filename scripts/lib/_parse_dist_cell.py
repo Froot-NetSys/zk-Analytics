@@ -110,9 +110,12 @@ def main():
     ap.add_argument("--epoch-size", type=int, required=True)
     ap.add_argument("--num-aggregators", type=int, required=True)
     ap.add_argument("--agg-wall", type=float, default=0.0)
+    ap.add_argument("--expected-logs", type=int)
     args=ap.parse_args()
+    dev_mode = os.environ.get("RISC0_DEV_MODE", "0") == "1"
     base=dict(dataset=args.dataset, aggregation_type=args.agg_type, mode=args.mode,
-              epoch_size=args.epoch_size, num_aggregators=args.num_aggregators)
+              epoch_size=args.epoch_size, num_aggregators=args.num_aggregators,
+              dev_mode=dev_mode)
 
     # per-node aggregation components + memory
     nodes=[]
@@ -133,8 +136,32 @@ def main():
         nodes.append(dict(i=i, comp=comp, total=total, epochs=n,
                           host=host, prover=prover, node_total=ntot,
                           proof_bytes=pb, journal_bytes=jb, proof_epochs=pn))
-    if not nodes:
-        print("[parse-dist] no aggregator logs"); return
+    expected_ids = {str(i) for i in range(args.num_aggregators)}
+    if {x["i"] for x in nodes} != expected_ids:
+        raise SystemExit("[parse-dist] missing aggregator logs; refusing partial metrics")
+    if any(x["epochs"] < 1 or x["total"] <= 0 for x in nodes):
+        raise SystemExit("[parse-dist] every selected aggregator must process an epoch; inspect per-node logs and input partitioning")
+    ingested = 0
+    for i in range(args.num_aggregators):
+        path = os.path.join(args.logdir, f"consumer_{i}.log")
+        with open(path) as f:
+            ingested += sum(int(m.group(1)) for m in re.finditer(
+                r"\[kafka-consumer\] ingested batches=\d+ events=(\d+)", f.read()))
+    if args.expected_logs is not None and ingested != args.expected_logs:
+        raise SystemExit(f"[parse-dist] ingested {ingested} logs, expected {args.expected_logs}")
+    if args.mode == "zk" and not dev_mode and any(x["proof_epochs"] != x["epochs"] for x in nodes):
+        raise SystemExit("[parse-dist] missing proof-size records for processed epochs")
+    for attempt in (1, 2, 3):
+        with open(os.path.join(args.logdir, f"query_response_{attempt}.json")) as f:
+            response = json.load(f)
+        if not isinstance(response, dict) or "error" in response or "proof" not in response:
+            raise SystemExit("[parse-dist] invalid query response")
+        if args.mode == "zk" and not dev_mode and not response["proof"].get("proof_bytes", 0):
+            raise SystemExit("[parse-dist] real-ZK query returned no proof")
+    if dev_mode:
+        for x in nodes:
+            x["comp"]["verify"] = 0.0
+            x["proof_bytes"] = 0
     # Native has no real prover; any r0vm the poller caught is a dying leftover
     # from a prior cell -> force prover=0 and use the clean host RSS.
     if args.mode == "native":
@@ -163,6 +190,8 @@ def main():
         "agg_wall_clock_s": round(args.agg_wall,3),
         "critical_path_epochs": crit["epochs"],
         "epochs_processed": sum(x["epochs"] for x in nodes),
+        "epochs_per_node": {x["i"]: x["epochs"] for x in nodes},
+        "ingested_logs": ingested,
         # Proof size & public output (zk): per-epoch (representative) + cluster
         # total summed over every epoch on every node.
         "proof_bytes_per_epoch": max((x["proof_bytes"] for x in nodes), default=0),
@@ -172,6 +201,10 @@ def main():
         "memory_model":"sum_across_nodes(host+prover); time=max-node critical path"}
 
     db,mg,pr,vf=parse_querier(args.logdir)
+    if None in (db, mg, pr, vf):
+        raise SystemExit("[parse-dist] missing query timing records")
+    if dev_mode:
+        vf = 0
     db_s=(db or 0)/1000; des=(mg or 0)/1000; comp_s=(pr or 0)/1000; ver=(vf or 0)/1000
     qh,qp,_=node_mem(os.path.join(args.workdir,"mem_query.json"))
     if (qh+qp)==0:

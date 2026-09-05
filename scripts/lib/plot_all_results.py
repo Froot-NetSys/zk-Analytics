@@ -9,10 +9,13 @@ import json
 import os
 from collections import defaultdict
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+except ImportError:
+    print("[plots] skipped all PDFs: install python3-matplotlib (or pip install matplotlib)")
+    raise SystemExit(0)
 
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -62,12 +65,12 @@ def plot_fig4():
     fig, axes = plt.subplots(1, 2, figsize=(max(7, len(labels) * 1.3), 4))
     for task, marker in (("aggregation", "o"), ("query", "s")):
         selected = {f"{r['dataset']}\n{r['run']}": r for r in records if r.get("task") == task}
-        axes[0].plot(labels, [number(selected.get(x, {}), "total_time_s") or 0 for x in labels],
+        axes[0].plot(labels, [number(selected.get(x, {}), "total_time_s") for x in labels],
                      marker=marker, label=task)
-        axes[1].plot(labels, [number(selected.get(x, {}), "peak_rss_mb") or 0 for x in labels],
+        axes[1].plot(labels, [number(selected.get(x, {}), "peak_rss_mb") for x in labels],
                      marker=marker, label=task)
     axes[0].set_ylabel("Measured time (s)")
-    axes[0].set_title("Figure 4: end-to-end time")
+    axes[0].set_title("Aggregation critical path / query time")
     axes[1].set_ylabel("Peak RSS (MB)")
     axes[1].set_title("Figure 4: memory")
     for ax in axes:
@@ -170,7 +173,11 @@ def plot_table2():
 
 
 def plot_table3():
-    data = rows(os.path.join(RESULTS, "fig5_zk.csv")) or rows(os.path.join(RESULTS, "fig5_dev.csv"))
+    kind = "real ZK"
+    data = rows(os.path.join(RESULTS, "fig5_zk.csv"))
+    if not data:
+        kind = "DEV: guest execution, no cryptographic proof"
+        data = rows(os.path.join(RESULTS, "fig5_dev.csv"))
     if not data:
         return skipped("table3_cost_components.pdf", ["results/fig5_zk.csv", "results/fig5_dev.csv"])
     fields = [("kafka_recv_s", "Kafka receive"), ("rocksdb_raw_insert_s", "RocksDB insert"),
@@ -187,7 +194,7 @@ def plot_table3():
         ax.set_xlabel("Number of aggregators")
         ax.set_ylabel("Time (s)")
         ax.legend(fontsize=7)
-    fig.suptitle("Table 3: distributed cost components")
+    fig.suptitle(f"Table 3: distributed cost components ({kind})")
     save(fig, "table3_cost_components.pdf")
 
 

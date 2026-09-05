@@ -194,13 +194,36 @@ install_fdb() {
     log_info "Starting FoundationDB via Docker..."
 
     if docker_cmd ps -a --format '{{.Names}}' | grep -q '^fdb$'; then
+        if [[ -n "${FDB_PUBLIC_ADDRESS:-}" ]]; then
+            current_cluster="$(docker_cmd exec fdb cat /var/fdb/fdb.cluster)" || {
+                log_error "Existing FDB must be running to validate its address; its data has been preserved"; exit 2;
+            }
+            if [[ "$current_cluster" != *"@${FDB_PUBLIC_ADDRESS}:4500" ]]; then
+                log_error "Existing FDB advertises a different address. Use its routable cluster file or migrate the existing database before selecting FDB_PUBLIC_ADDRESS; data has been preserved."
+                exit 2
+            fi
+        fi
         docker_cmd start fdb 2>/dev/null || true
     else
-        docker_cmd run -d \
+        if [[ -n "${FDB_PUBLIC_ADDRESS:-}" ]]; then
+          [[ "$FDB_PUBLIC_ADDRESS" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            log_error "FDB_PUBLIC_ADDRESS must be the coordinator's private IPv4 address"; exit 2;
+          }
+          docker_cmd run -d --name fdb --restart unless-stopped \
+            --network host -e FDB_PUBLIC_ADDRESS="$FDB_PUBLIC_ADDRESS" \
+            --entrypoint /bin/bash foundationdb/foundationdb:7.1.25 -c '
+              printf "docker:docker@%s:4500\n" "$FDB_PUBLIC_ADDRESS" > /var/fdb/fdb.cluster
+              exec fdbserver --cluster-file /var/fdb/fdb.cluster \
+                --listen-address "$FDB_PUBLIC_ADDRESS:4500" \
+                --public-address "$FDB_PUBLIC_ADDRESS:4500" \
+                --datadir /var/fdb/data --logdir /var/fdb/logs'
+        else
+          docker_cmd run -d \
             --name fdb \
             --restart unless-stopped \
             -p 4500:4500 \
             foundationdb/foundationdb:7.1.25
+        fi
     fi
 
     # Wait for FDB to start
