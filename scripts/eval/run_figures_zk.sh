@@ -73,6 +73,7 @@ if [ "${FIG:-5}" = 5 ]; then
   echo "=== Figure 5 ${RUN_KIND}: distributed aggregation (vary aggregators) ==="
   echo "[fig5-${RUN_KIND}] setup: logs_per_epoch=$FIG5_LOGS_PER_EPOCH total_logs=$FIG5_TOTAL_LOGS logs_per_commit_batch=$FIG5_LOGS_PER_COMMIT_BATCH commit_batches_per_epoch=$((FIG5_LOGS_PER_EPOCH / FIG5_LOGS_PER_COMMIT_BATCH))"
   C="$ROOT_DIR/results/fig5_${RUN_KIND}.csv"; echo "$HDR" > "$C"
+  echo "[fig5-${RUN_KIND}] result header: $HDR"
   # Build the full cross product by default. FIG5_SPECS remains an explicit
   # point selector for reduced checks.
   if [[ -n "${FIG5_SPECS:-}" ]]; then
@@ -97,7 +98,7 @@ if [ "${FIG:-5}" = 5 ]; then
       EPOCH_LOGS=$FIG5_LOGS_PER_EPOCH TOTAL_LOGS=$FIG5_TOTAL_LOGS \
       COMMIT_BATCH_SIZE=$FIG5_LOGS_PER_COMMIT_BATCH NODES="$selected_nodes"
     emit "$C" "$N" "$mode"
-    cat "$C" | tail -1
+    echo "[fig5-${RUN_KIND}] result row: $(tail -n 1 "$C")"
   done
   echo "[fig5-${RUN_KIND}] -> $C"
 fi

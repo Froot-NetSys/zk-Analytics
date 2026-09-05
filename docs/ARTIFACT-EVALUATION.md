@@ -405,6 +405,9 @@ size, and query costs. Dev mode executes the same zkVM guests but does not
 create real STARK proofs; use the ZK output for proof size and real proving
 costs. Compare aggregation time and speedup with Figure 5, and the component
 measurements with Table 3. Expect the real-ZK run to take many hours.
+The runner prints the CSV header before the sweep and labels each subsequent
+line as a result row, so terminal output has the same field ordering as the
+saved CSV.
 
 `ARTIFACT_MACHINES` is the resulting ordered pool. A point requesting `N`
 aggregators uses its first `N` entries. For example, run every mode on exactly
