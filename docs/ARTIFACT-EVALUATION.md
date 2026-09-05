@@ -368,10 +368,11 @@ Complete Step 0 on the coordinator first. `--install-deps` installs the system
 packages, Rust/RISC Zero toolchain, and FoundationDB client on every worker;
 workers connect to the shared Kafka and FoundationDB services and do not start
 their own servers. It requires passwordless `sudo` on the workers (the default
-on CloudLab nodes). `--deploy` then copies the required binaries, memory tracer,
-and FDB cluster file to every worker. Thus, Step 0 starts Kafka and FoundationDB
-once on the coordinator, while this command installs all worker-side
-dependencies.
+on CloudLab nodes). `--deploy` then copies `kafka-producer`, `kafka-consumer`,
+`aggregator`, `querier`, the memory tracer, and the FDB cluster file to every
+worker, and verifies that each deployed file is usable. Thus, Step 0 starts
+Kafka and FoundationDB once on the coordinator, while this command installs all
+worker-side dependencies.
 
 #### Figure 5 and Table 3 — distributed aggregation
 

@@ -28,8 +28,8 @@ Each remaining machine runs exactly one aggregator. --copy-keys may prompt for
 the workers' passwords. --install-deps requires passwordless sudo and installs
 system build packages, Rust, RISC Zero, and the FoundationDB client on every
 worker without starting a worker-local Kafka/FDB server. --deploy builds locally
-and installs the required binaries, memory tracer, and FDB cluster file on every
-worker.
+and installs kafka-producer, kafka-consumer, aggregator, querier, the memory
+tracer, and the FDB cluster file on every worker.
 EOF
 }
 
@@ -137,11 +137,14 @@ if (( DEPLOY )); then
   for target in "${NORMALIZED[@]:1}"; do
     echo "[artifact-setup] deploying worker files to $target:$REMOTE_DIST"
     ssh -n "$target" "mkdir -p '$REMOTE_DIST/bin' '$REMOTE_DIST/lib'"
-    scp -q "$ROOT/target/release/aggregator" "$ROOT/target/release/kafka-consumer" \
+    scp -q "$ROOT/target/release/kafka-producer" \
+      "$ROOT/target/release/kafka-consumer" \
+      "$ROOT/target/release/aggregator" \
+      "$ROOT/target/release/querier" \
       "$ROOT/scripts/lib/mem_trace.py" "$target:$REMOTE_DIST/bin/"
     scp -q "$FDB_SOURCE" "$target:$REMOTE_DIST/fdb.cluster"
-    ssh -n "$target" "chmod +x '$REMOTE_DIST/bin/aggregator' '$REMOTE_DIST/bin/kafka-consumer' '$REMOTE_DIST/bin/mem_trace.py'"
-    ssh -n "$target" "test -x '$REMOTE_DIST/bin/aggregator' && test -x '$REMOTE_DIST/bin/kafka-consumer' && test -x '$REMOTE_DIST/bin/mem_trace.py' && test -r '$REMOTE_DIST/fdb.cluster'"
+    ssh -n "$target" "chmod +x '$REMOTE_DIST/bin/kafka-producer' '$REMOTE_DIST/bin/kafka-consumer' '$REMOTE_DIST/bin/aggregator' '$REMOTE_DIST/bin/querier' '$REMOTE_DIST/bin/mem_trace.py'"
+    ssh -n "$target" "test -x '$REMOTE_DIST/bin/kafka-producer' && test -x '$REMOTE_DIST/bin/kafka-consumer' && test -x '$REMOTE_DIST/bin/aggregator' && test -x '$REMOTE_DIST/bin/querier' && test -x '$REMOTE_DIST/bin/mem_trace.py' && test -r '$REMOTE_DIST/fdb.cluster'"
   done
 fi
 
