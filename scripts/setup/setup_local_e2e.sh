@@ -13,7 +13,7 @@ set -euo pipefail
 #   - Rust build dependencies
 #
 # Usage:
-#   ./scripts/setup/setup_local_e2e.sh [--all|--docker|--fdb|--risc0|--kafka|--deps]
+#   ./scripts/setup/setup_local_e2e.sh [--all|--docker|--fdb|--fdb-client|--risc0|--kafka|--deps]
 #
 # After setup, run:
 #   ./scripts/eval/run_local_e2e.sh start
@@ -156,8 +156,9 @@ install_docker() {
     log_info "Docker setup complete"
 }
 
-# Install FoundationDB
-install_fdb() {
+# Install only the FoundationDB client. Distributed workers connect to the
+# shared server and must not start their own FoundationDB server containers.
+install_fdb_client() {
     FDB_VERSION="${FDB_VERSION:-7.1.61}"
 
     if command -v fdbcli &>/dev/null; then
@@ -179,6 +180,11 @@ install_fdb() {
         cd "$ROOT_DIR"
         log_info "FoundationDB client installed"
     fi
+}
+
+# Install the FoundationDB client and start a local server.
+install_fdb() {
+    install_fdb_client
 
     # Create FDB config directory
     sudo mkdir -p /etc/foundationdb
@@ -481,6 +487,7 @@ usage() {
     echo "  --deps     Install system dependencies only"
     echo "  --docker   Install Docker only"
     echo "  --fdb      Install FoundationDB only"
+    echo "  --fdb-client Install the FoundationDB client only (no local server)"
     echo "  --risc0    Install RISC0 toolchain only"
     echo "  --kafka    Setup Kafka only"
     echo "  --dirs     Create required directories only (tmp, rocksdb)"
@@ -512,6 +519,9 @@ main() {
             ;;
         --fdb|fdb)
             install_fdb
+            ;;
+        --fdb-client|fdb-client)
+            install_fdb_client
             ;;
         --risc0|risc0)
             install_risc0

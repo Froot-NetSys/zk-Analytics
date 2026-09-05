@@ -344,15 +344,21 @@ and optionally deploy the worker binaries with:
   --ssh-user <username> \
   --kafka-host <coordinator-private-address> \
   --fdb-cluster-file /etc/foundationdb/fdb.cluster \
-  --copy-keys --deploy
+  --copy-keys --install-deps --deploy
 ```
 
 The first entry is the local coordinator and is not contacted over SSH.
 `--copy-keys` may ask for each worker password once; subsequent evaluation runs
 are non-interactive. The generated `.artifact-cluster.env` is ignored by Git
 and is loaded automatically by Figure 4, Table 2, Figure 5, and Table 3.
-Complete Step 0 on every worker first; this setup script configures access and
-deploys the artifact but does not install OS packages or start Kafka/FDB.
+Complete Step 0 on the coordinator first. `--install-deps` installs the system
+packages, Rust/RISC Zero toolchain, and FoundationDB client on every worker;
+workers connect to the shared Kafka and FoundationDB services and do not start
+their own servers. It requires passwordless `sudo` on the workers (the default
+on CloudLab nodes). `--deploy` then copies the required binaries, memory tracer,
+and FDB cluster file to every worker. Thus, Step 0 starts Kafka and FoundationDB
+once on the coordinator, while this command installs all worker-side
+dependencies.
 
 #### Figure 5 and Table 3 — distributed aggregation
 

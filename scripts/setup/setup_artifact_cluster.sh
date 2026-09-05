@@ -13,6 +13,7 @@ SSH_USER_VALUE="${ARTIFACT_SSH_USER:-${USER:-}}"
 KAFKA_VALUE="${ARTIFACT_KAFKA_HOST:-${KAFKA_HOST:-}}"
 FDB_SOURCE="${ARTIFACT_FDB_SOURCE:-${FDB_CLUSTER_FILE:-/etc/foundationdb/fdb.cluster}}"
 COPY_KEYS=0
+INSTALL_DEPS=0
 DEPLOY=0
 
 usage() {
@@ -20,12 +21,15 @@ usage() {
 Usage:
   setup_artifact_cluster.sh --machines "node0 host1 ... host7" \
     --ssh-user USER --kafka-host COORDINATOR_IP [--fdb-cluster-file FILE] \
-    [--copy-keys] [--deploy]
+    [--copy-keys] [--install-deps] [--deploy]
 
 The first machine is the local coordinator and is never contacted over SSH.
 Each remaining machine runs exactly one aggregator. --copy-keys may prompt for
-the workers' passwords. --deploy builds locally and installs the required
-binaries, memory tracer, and FDB cluster file on every worker.
+the workers' passwords. --install-deps requires passwordless sudo and installs
+system build packages, Rust, RISC Zero, and the FoundationDB client on every
+worker without starting a worker-local Kafka/FDB server. --deploy builds locally
+and installs the required binaries, memory tracer, and FDB cluster file on every
+worker.
 EOF
 }
 
@@ -36,6 +40,7 @@ while (( $# )); do
     --kafka-host) KAFKA_VALUE="${2:?missing value}"; shift 2 ;;
     --fdb-cluster-file) FDB_SOURCE="${2:?missing value}"; shift 2 ;;
     --copy-keys) COPY_KEYS=1; shift ;;
+    --install-deps) INSTALL_DEPS=1; shift ;;
     --deploy) DEPLOY=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -77,6 +82,24 @@ if (( COPY_KEYS )); then
   done
 fi
 
+if (( INSTALL_DEPS )); then
+  for target in "${NORMALIZED[@]:1}"; do
+    ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$target" true || {
+      echo "passwordless SSH is not configured for $target; use --copy-keys first" >&2
+      exit 2
+    }
+    ssh -n -o BatchMode=yes "$target" "sudo -n true" || {
+      echo "passwordless sudo is required to install dependencies on $target" >&2
+      exit 2
+    }
+    echo "[artifact-setup] installing worker dependencies on $target"
+    scp -q -o BatchMode=yes "$ROOT/scripts/setup/setup_local_e2e.sh" "$target:/tmp/zk_analytics_setup_local_e2e.sh"
+    ssh -n -o BatchMode=yes "$target" "chmod +x /tmp/zk_analytics_setup_local_e2e.sh && /tmp/zk_analytics_setup_local_e2e.sh --deps"
+    ssh -n -o BatchMode=yes "$target" "/tmp/zk_analytics_setup_local_e2e.sh --fdb-client"
+    ssh -n -o BatchMode=yes "$target" "bash -lc '/tmp/zk_analytics_setup_local_e2e.sh --risc0'"
+  done
+fi
+
 REMOTE_HOME=""
 for target in "${NORMALIZED[@]:1}"; do
   echo "[artifact-setup] checking passwordless SSH to $target"
@@ -93,7 +116,7 @@ for target in "${NORMALIZED[@]:1}"; do
     exit 2
   }
   ssh -n -o BatchMode=yes "$target" "test -x '$home/.cargo/bin/r0vm' || test -x '$home/.risc0/bin/r0vm'" || {
-    echo "r0vm is not installed for $target; complete Step 0 on every worker" >&2
+    echo "r0vm is not installed for $target; rerun setup with --install-deps" >&2
     exit 2
   }
 done
