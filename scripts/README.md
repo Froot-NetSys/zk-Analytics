@@ -7,8 +7,9 @@ the repository root (each script resolves the repo root from its own location).
 
 | Directory | What's in it |
 |-----------|--------------|
-| `setup/` | Environment setup and reset: `setup_local_e2e.sh`, `setup_remote_e2e.sh`, `kafka-setup.sh`, `prep_caida.sh`, `reset_fdb.sh`, `reset_rocksdb.sh`, `docker_no_sudo.sh` |
+| `setup/` | Environment setup and reset: `setup_artifact_cluster.sh`, `setup_local_e2e.sh`, `setup_remote_e2e.sh`, `kafka-setup.sh`, `prep_caida.sh`, `reset_fdb.sh`, `reset_rocksdb.sh`, `docker_no_sudo.sh` |
 | `eval/` | Paper figure/table reproduction: `run_fig4_e2e.sh`, `run_table2_native.sh`, `run_figures_zk.sh`, `run_zkvm_*.sh`, `run_zkvm_distributed_sweep.sh`, `run_non_zk_*.sh`, `run_e2e_native_*.sh`, and baseline runners. |
+| `setup/setup_artifact_cluster.sh` | Shared SSH validation and worker deployment for distributed Figure 4, Table 2, Figure 5, and Table 3 runs. |
 | `distributed/` | Multi-node cluster orchestration: `run_distributed_*.sh`, `bench_distributed_aggregators.sh`, `example_distributed_setup.sh` |
 | `bench/` | Micro-benchmarks: `bench_resharding_*.sh`, `prove_handoff_demo.sh` |
 | `lib/` | Shared config (`common.sh`, sourced for the structural params) and internal helpers invoked by the above: log parsers (`_parse_*.py`), table/plot builders (`build_*.py`, `_build_*.py`), `mem_trace.py` |

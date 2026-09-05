@@ -336,8 +336,8 @@ claim; a complete CSV must contain all 15 rows.
 
 These experiments require up to eight SSH-reachable machines plus Kafka and
 FoundationDB. These are distributed zk-Analytics experiments, not extrapolated
-single-machine rows and not a native scaling sweep. Run on `node0`, with
-passwordless SSH to `node1` through `node7`:
+single-machine rows and not a native scaling sweep. Run the shared cluster setup
+below once on the coordinator, then start the full sweep with:
 
 ```bash
 KAFKA_HOST=<coordinator-private-address> make eval-fig5-table3-zk
@@ -353,13 +353,33 @@ host and prover RSS, proof size, and query costs. Compare aggregation time and
 speedup with Figure 5, and the component measurements with Table 3. Expect this
 run to take many hours.
 
-`FIG5_MACHINES` is the ordered pool of SSH host aliases. A point requesting `N`
+All distributed artifact experiments share the ordered machine pool in
+`.artifact-cluster.env`. Configure passwordless SSH, validate Kafka reachability,
+and optionally deploy the worker binaries with:
+
+```bash
+./scripts/setup/setup_artifact_cluster.sh \
+  --machines "node0 <node1-ip> <node2-ip> <node3-ip> <node4-ip> <node5-ip> <node6-ip> <node7-ip>" \
+  --ssh-user <username> \
+  --kafka-host <coordinator-private-address> \
+  --fdb-cluster-file /etc/foundationdb/fdb.cluster \
+  --copy-keys --deploy
+```
+
+The first entry is the local coordinator and is not contacted over SSH.
+`--copy-keys` may ask for each worker password once; subsequent evaluation runs
+are non-interactive. The generated `.artifact-cluster.env` is ignored by Git
+and is loaded automatically by Figure 4, Table 2, Figure 5, and Table 3.
+Complete Step 0 on every worker first; this setup script configures access and
+deploys the artifact but does not install OS packages or start Kafka/FDB.
+
+`ARTIFACT_MACHINES` is the resulting ordered pool. A point requesting `N`
 aggregators uses its first `N` entries. For example, run every mode on exactly
 four machines with:
 
 ```bash
 KAFKA_HOST=<coordinator-private-address> \
-FIG5_MACHINES="node0 node1 node2 node3" \
+ARTIFACT_MACHINES="node0 node1 node2 node3" \
 FIG5_NUM_AGGREGATORS=4 \
 make eval-fig5-table3-zk
 ```
@@ -368,13 +388,14 @@ Or run only one point on four chosen machines:
 
 ```bash
 KAFKA_HOST=<coordinator-private-address> \
-FIG5_MACHINES="node0 node2 node5 node7" \
+ARTIFACT_MACHINES="node0 node2 node5 node7" \
 FIG5_SPECS="histogram:4" \
 make eval-fig5-table3-zk
 ```
 
-The first `FIG5_MACHINES` entry is the coordinator running locally; subsequent
-entries must be passwordless SSH aliases. The command rejects a requested
+The first `ARTIFACT_MACHINES` entry is the coordinator running locally; subsequent
+entries may be SSH aliases or `user@host` targets and must support passwordless
+SSH. The command rejects a requested
 aggregator count larger than the configured machine pool. This real-ZK target
 also forces `RISC0_DEV_MODE=0`, regardless of the caller's environment.
 
@@ -409,8 +430,8 @@ Emissions with four aggregators. It is not a single-machine synthetic sweep.
 All three runs include log commitment, Kafka ingestion, RocksDB raw storage,
 parallel native aggregation, FoundationDB storage, and the native query.
 
-After installing the Google and CAIDA inputs and configuring passwordless SSH
-from `node0` to `node1` through `node7`, run the Vanilla side of Table 2 with:
+After installing the Google and CAIDA inputs and completing the shared cluster
+setup above, run the Vanilla side of Table 2 with:
 
 ```bash
 KAFKA_HOST=<coordinator-private-address> make eval-table2-native
@@ -445,11 +466,10 @@ termination leaves benchmark processes behind, run `make eval-kill` locally or
 
 > **Kafka/FDB endpoints.** Table 2, Figure 4, Figure 5, and Table 3 use the
 > storage-backed `run_distributed_baseline.sh` pipeline, which connects to Kafka
-> and FoundationDB. The shipped
-> scripts use RFC 5737 **placeholder IPs** (e.g. `192.0.2.1`), so point them at
-> your setup first: after `setup_local_e2e.sh --all` use `KAFKA_HOST=localhost`
-> (single machine), or set `KAFKA_HOST`/`KAFKA_BROKERS` + `FDB_CLUSTER_FILE` and
-> the node IPs in `scripts/ip_defaults.sh` for a cluster.
+> and FoundationDB. Use `setup_artifact_cluster.sh` above to store the shared
+> coordinator address, FDB cluster file, machine pool, and worker deployment.
+> Kafka must advertise an address reachable from every worker; `localhost` is
+> valid only for a one-machine diagnostic, not a distributed run.
 
 Merge the measured CSVs into the comparison tables/plots with:
 
@@ -462,15 +482,13 @@ Expected outputs include `results/non_zk_aggregation_baseline.csv`,
 When measured ZK inputs are present, it also creates
 `results/non_zk_baseline_summary.md` and PDFs under `plots/`.
 
-### Distributed experiments (Fig 5, Table 3, Fig 4 distributed)
+### Distributed experiments (Figure 4, Table 2, Figure 5, and Table 3)
 
-These need multiple machines reachable over SSH. Copy
-`scripts/distributed_e2e_config.example.sh`, set `SSH_USER`, the node IPs
-(`scripts/ip_defaults.sh`), and `KAFKA_BROKERS`/`FDB_*`, then drive the runs with
-`scripts/distributed/run_distributed_baseline.sh`. See
-`docs/DISTRIBUTED_SETUP.md` and `docs/DISTRIBUTED_E2E_GUIDE.md`. A single
-machine can run the standalone Figure 6/7 benchmarks, but cannot validate the
-distributed Figure 4, Table 2, Figure 5, or Table 3 behavior.
+These targets all load the same `.artifact-cluster.env` generated by
+`scripts/setup/setup_artifact_cluster.sh`. Each selected machine runs exactly
+one aggregator. A single machine can run the standalone Figure 6/7 benchmarks,
+but cannot validate distributed Figure 4, Table 2, Figure 5, or Table 3
+behavior. See `docs/DISTRIBUTED_SETUP.md` for lower-level service setup details.
 
 ## Cost-limited claims (read before reproducing)
 

@@ -9,33 +9,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT_DIR"
 DRV="$ROOT_DIR/scripts/distributed/run_distributed_baseline.sh"
 # Must match the driver's metrics path (run_distributed_baseline.sh writes here).
 MET="$ROOT_DIR/results/_dist_metrics.jsonl"
-FIG5_MACHINES_VALUE="${FIG5_MACHINES:-node0 node1 node2 node3 node4 node5 node6 node7}"
-read -r -a FIG5_MACHINE_ARRAY <<< "$FIG5_MACHINES_VALUE"
-declare -A FIG5_MACHINE_SEEN=()
-for machine in "${FIG5_MACHINE_ARRAY[@]}"; do
-  if [[ -n "${FIG5_MACHINE_SEEN[$machine]:-}" ]]; then
-    echo "[fig5-zk] duplicate machine in FIG5_MACHINES: $machine" >&2
-    exit 2
-  fi
-  FIG5_MACHINE_SEEN[$machine]=1
-done
-
-# Figure 5 always uses exactly one aggregator process per selected machine.
-# A point with N aggregators selects the first N entries from FIG5_MACHINES.
-nodes_for() {
-  local n="$1"
-  if [[ ! "$n" =~ ^[1-9][0-9]*$ ]]; then
-    echo "[fig5-zk] invalid aggregator count: $n" >&2
-    return 2
-  fi
-  if (( n > ${#FIG5_MACHINE_ARRAY[@]} )); then
-    echo "[fig5-zk] requested $n aggregators but FIG5_MACHINES contains only ${#FIG5_MACHINE_ARRAY[@]} machines" >&2
-    return 2
-  fi
-  printf '%s' "${FIG5_MACHINE_ARRAY[0]}"
-  for ((i=1; i<n; i++)); do printf ' %s' "${FIG5_MACHINE_ARRAY[i]}"; done
-  printf '\n'
-}
+source "$ROOT_DIR/scripts/lib/artifact_cluster.sh"
+artifact_cluster_load "$ROOT_DIR"
 
 emit(){ local csv="$1" var="$2" mode="$3"
   python3 - "$MET" "$var" "$mode" >> "$csv" <<'PY'
@@ -101,7 +76,7 @@ if [ "${FIG:-5}" = 5 ]; then
       echo "[fig5-zk] invalid mode '$mode'; expected samples, histogram, or cm" >&2
       exit 2
     esac
-    selected_nodes="$(nodes_for "$N")"
+    selected_nodes="$(artifact_nodes_for "$N")"
     echo "[fig5-zk] mode=$mode aggregators=$N machines=[$selected_nodes]"; : > "$MET"
     run_cell DATASET=synthetic SYNTH_MODE=$mode SYNTH_KEYS=4096 TOTAL_LOGS=131072 NODES="$selected_nodes"
     emit "$C" "$N" "$mode"

@@ -33,5 +33,6 @@ __pycache__/
 # generated evaluation outputs (regenerate via scripts/ and Makefile)
 /bench_csv/
 /results/
+/.artifact-cluster.env
 /plots/
 /figures/

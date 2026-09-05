@@ -11,8 +11,9 @@ MET="$ROOT/results/_dist_metrics.jsonl"
 OUTDIR="$ROOT/results/table2_native"; mkdir -p "$OUTDIR"
 OUT="$ROOT/results/table2_native.csv"
 source "$ROOT/scripts/lib/common.sh"
+source "$ROOT/scripts/lib/artifact_cluster.sh"
+artifact_cluster_load "$ROOT"
 export AGG_MAX_WAIT=900 AGGR_IDLE_TIMEOUT_SECS=20
-nodes_for(){ local n="$1" o=""; for ((i=0;i<n;i++)); do o="$o node$i"; done; echo "${o# }"; }
 LOG=/tmp/e2e_native.log; : > "$LOG"
 say(){ echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG"; }
 
@@ -82,9 +83,10 @@ PY
 # dataset:nodes. These are measurements on real machines, not inferred rows.
 for spec in $TABLE2_SPECS_VALUE; do
   IFS=: read -r ds n <<< "$spec"
-  say "=== Table 2 Vanilla: $ds ($n aggregators) ==="
+  selected_nodes="$(artifact_nodes_for "$n")"
+  say "=== Table 2 Vanilla: $ds ($n aggregators on [$selected_nodes]) ==="
   : > "$MET"
-  if ! env DATASET="$ds" NODES="$(nodes_for "$n")" MODE=native \
+  if ! env DATASET="$ds" NODES="$selected_nodes" MODE=native \
       MEM_INTERVAL="${TABLE2_MEM_INTERVAL:-0.01}" bash "$DRV" 2>&1 | tee -a "$LOG"; then
     say "  driver error for $ds"
     exit 1

@@ -30,15 +30,15 @@ COMMIT_BATCH_SIZE="${COMMIT_BATCH_SIZE:-8}"
 KAFKA_HOST="${KAFKA_HOST:-192.0.2.1}"
 KAFKA_BROKERS="${KAFKA_HOST}:9092"
 QUERIER_PORT="${QUERIER_PORT:-8090}"
-DIST="$HOME/zktel-dist"           # per-node deploy dir (bin/, lib/)
+DIST="${ARTIFACT_REMOTE_DIST_DIR:-$HOME/zktel-dist}" # worker deploy dir (bin/, lib/)
 if [[ -z "${FDB_CLUSTER_FILE:-}" ]]; then
-  if [[ "$COORD" == "node0" && -f /etc/foundationdb/fdb.cluster ]]; then
+  if [[ -f /etc/foundationdb/fdb.cluster ]]; then
     FDB_CLUSTER_FILE=/etc/foundationdb/fdb.cluster
   else
     FDB_CLUSTER_FILE="$DIST/fdb.cluster"
   fi
 fi
-REMOTE_ENV="LD_LIBRARY_PATH=$DIST/lib PATH=$HOME/.cargo/bin:\$PATH"
+REMOTE_ENV="LD_LIBRARY_PATH=$DIST/lib PATH=\$HOME/.cargo/bin:\$HOME/.risc0/bin:\$PATH"
 AGGR_IDLE_TIMEOUT_SECS="${AGGR_IDLE_TIMEOUT_SECS:-20}"
 MEM_INTERVAL="${MEM_INTERVAL:-1.0}"
 
@@ -85,8 +85,8 @@ RISC0_DEV_MODE="${RISC0_DEV_MODE:-0}"
 
 LBIN="$ROOT_DIR/target/release"   # local (node0) binaries
 RBIN="$DIST/bin"                        # remote node binaries
-node_bin() { if [[ "$1" == "$COORD" || "$1" == "node0" ]]; then echo "$LBIN"; else echo "$RBIN"; fi; }
-node_memtrace() { if [[ "$1" == "$COORD" || "$1" == "node0" ]]; then echo "$ROOT_DIR/scripts/lib/mem_trace.py"; else echo "$RBIN/mem_trace.py"; fi; }
+node_bin() { if [[ "$1" == "$COORD" ]]; then echo "$LBIN"; else echo "$RBIN"; fi; }
+node_memtrace() { if [[ "$1" == "$COORD" ]]; then echo "$ROOT_DIR/scripts/lib/mem_trace.py"; else echo "$RBIN/mem_trace.py"; fi; }
 
 echo "[dist] $DATASET mode=$MODE nodes=$NUM_AGGREGATORS ($NODES_STR) epoch=$EPOCH_LOGS"
 
@@ -109,12 +109,12 @@ for node in "${NODES[@]:1}"; do
 done
 
 # run on a node (foreground, blocks): $1=node, rest=command.
-on_node() { local node="$1"; shift; if [ "$node" = "$COORD" ] || [ "$node" = node0 ]; then bash -c "$*"; else ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$node" "$*"; fi; }
+on_node() { local node="$1"; shift; if [ "$node" = "$COORD" ]; then bash -c "$*"; else ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$node" "$*"; fi; }
 
 # launch a long-running command DETACHED on a node and return immediately
 # (setsid so it survives the SSH channel close; cmd handles its own redirects).
 spawn_node() { local node="$1"; shift; local cmd="$*";
-  if [ "$node" = "$COORD" ] || [ "$node" = node0 ]; then
+  if [ "$node" = "$COORD" ]; then
     setsid bash -c "$cmd" </dev/null >/dev/null 2>&1 &
   else
     ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$node" "setsid bash -c '$cmd' </dev/null >/dev/null 2>&1 & echo ok" >/dev/null 2>&1
@@ -130,7 +130,7 @@ ALLNODES="$NODES_STR"
 KILLPATS='for name in zktelemetry-ris aggregator kafka-consumer kafka-producer querier r0vm; do pkill -9 -x "$name" 2>/dev/null || true; done; pkill -9 -f "[m]em_trace.py" 2>/dev/null || true'
 cleanup() {
   for n in $ALLNODES; do
-    if [[ "$n" == "$COORD" || "$n" == "node0" ]]; then
+    if [[ "$n" == "$COORD" ]]; then
       timeout 5 bash -c "$KILLPATS" >/dev/null 2>&1 || true
     else
       timeout 8 ssh -n -o BatchMode=yes -o ConnectTimeout=5 "$n" "$KILLPATS" \
@@ -238,12 +238,17 @@ ALOG="/tmp/${RUNID}_agg"; AMEM="/tmp/${RUNID}_mem"
 AGG_START=$(date +%s.%N)
 for ((i=0;i<NUM_AGGREGATORS;i++)); do
   BDIR="$(node_bin "${NODES[i]}")"
+  if [[ "${NODES[i]}" == "$COORD" ]]; then
+    NODE_FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE"
+  else
+    NODE_FDB_CLUSTER_FILE="$DIST/fdb.cluster"
+  fi
   MEMTRACE="$(node_memtrace "${NODES[i]}")"
   spawn_node "${NODES[i]}" "rm -f ${ALOG}_$i.DONE; \
     rm -f ${AMEM}_$i.csv ${AMEM}_$i.json; \
     nohup python3 $MEMTRACE --out ${AMEM}_$i.csv --summary ${AMEM}_$i.json --match aggregator --match r0vm --interval $MEM_INTERVAL > /dev/null 2>&1 & \
     for attempt in \$(seq 1 100); do test -s ${AMEM}_$i.csv && break; sleep 0.01; done; \
-    env $REMOTE_ENV E2E_TIMING=1 RISC0_DEV_MODE=$RISC0_DEV_MODE NO_ZKVM_PROOF=$NO_ZKVM_PROOF RAW_ROCKSDB_PATH=${RAWP}_$i AGG_ROCKSDB_PATH=${AGGP}_$i AGGREGATOR_ID=$i FDB_CLUSTER_FILE=$FDB_CLUSTER_FILE FDB_SUBSPACE=$FDB_SUBSPACE AGGR_IDLE_TIMEOUT_SECS=$AGGR_IDLE_TIMEOUT_SECS AGGR_PIPELINE=rocksdb RAYON_NUM_THREADS=56 \
+    env $REMOTE_ENV E2E_TIMING=1 RISC0_DEV_MODE=$RISC0_DEV_MODE NO_ZKVM_PROOF=$NO_ZKVM_PROOF RAW_ROCKSDB_PATH=${RAWP}_$i AGG_ROCKSDB_PATH=${AGGP}_$i AGGREGATOR_ID=$i FDB_CLUSTER_FILE=$NODE_FDB_CLUSTER_FILE FDB_SUBSPACE=$FDB_SUBSPACE AGGR_IDLE_TIMEOUT_SECS=$AGGR_IDLE_TIMEOUT_SECS AGGR_PIPELINE=rocksdb RAYON_NUM_THREADS=56 \
     /usr/bin/time -v $BDIR/aggregator --rocksdb --mode $AGG_MODE --threads 56 > ${ALOG}_$i.log 2> ${ALOG}_${i}_time.log; \
     pkill -INT -f '[m]em_trace.py' 2>/dev/null; sleep 3; touch ${ALOG}_$i.DONE"
 done
