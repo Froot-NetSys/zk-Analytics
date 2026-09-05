@@ -31,6 +31,29 @@ export AGGR_IDLE_TIMEOUT_SECS="${AGGR_IDLE_TIMEOUT_SECS:-20}"
 LOG="/tmp/e2e_${RUN_KIND}.log"; : > "$LOG"
 say(){ echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG"; }
 
+print_metrics() {
+  python3 - "$MET" <<'PY'
+import json, sys
+
+def flatten(value, prefix=""):
+    for key, item in value.items():
+        name = f"{prefix}.{key}" if prefix else key
+        if isinstance(item, dict):
+            yield from flatten(item, name)
+        else:
+            yield name, item
+
+with open(sys.argv[1]) as f:
+    records = [json.loads(line) for line in f if line.strip()]
+if not records:
+    raise SystemExit(f"no metrics found in {sys.argv[1]}")
+for record in records:
+    print(f"[fig4-result] task={record.get('task', 'unknown')}")
+    for name, value in flatten(record):
+        print(f"  {name}={value}")
+PY
+}
+
 # dataset:nodes (paper-faithful aggregator counts). Only vehicle is bundled.
 for spec in ${FIG4_SPECS:-vehicle:4}; do
   IFS=: read -r ds n <<< "$spec"
@@ -42,6 +65,7 @@ for spec in ${FIG4_SPECS:-vehicle:4}; do
     say "  driver error for $ds"
     exit 1
   fi
+  print_metrics | tee -a "$LOG"
   cp "$MET" "$OUTDIR/${ds}_${RUN_KIND}.jsonl"
   say "  saved $OUTDIR/${ds}_${RUN_KIND}.jsonl"
 done

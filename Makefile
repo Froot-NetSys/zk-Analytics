@@ -5,7 +5,7 @@
         eval-kill eval-fig6-aggregator-dev eval-fig6-aggregator-zk \
         eval-fig7-query-dev eval-fig7-query-zk eval-table2-native \
         eval-fig5-table3-dev eval-fig5-table3-zk \
-        eval-fig4-vehicle-dev eval-fig4-vehicle-zk
+        eval-fig4-vehicle-dev eval-fig4-vehicle-zk eval-plots-all
 
 # Stop local processes left by an interrupted evaluation run.
 eval-kill:
@@ -78,3 +78,8 @@ eval-non-zk-e2e:
 # Convenience: regenerate the merged CSVs/plots/summary from whatever measured
 # inputs are currently present (native + 56-thread agg + query proofs).
 eval-non-zk-all: eval-non-zk-baseline
+
+# Generate every figure/table visualization for which measured result files
+# are present. Missing experiment outputs are reported and skipped.
+eval-plots-all:
+	python3 ./scripts/lib/plot_all_results.py

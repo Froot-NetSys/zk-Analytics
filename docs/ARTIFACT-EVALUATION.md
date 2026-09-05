@@ -378,36 +378,7 @@ worker-side dependencies.
 
 These experiments require up to eight SSH-reachable machines plus Kafka and
 FoundationDB. These are distributed zk-Analytics experiments, not extrapolated
-single-machine rows and not a native scaling sweep. After completing the shared
-cluster setup above, run the functional dev-mode sweep with:
-
-```bash
-KAFKA_HOST=<coordinator-private-address> make eval-fig5-table3-dev
-```
-
-Then start the real-proof sweep with:
-
-```bash
-KAFKA_HOST=<coordinator-private-address> make eval-fig5-table3-zk
-```
-
-Expected outputs are `results/fig5_dev.csv` and `results/fig5_zk.csv`. Both
-commands directly measure all 12 combinations of three aggregation modes and
-1, 2, 4, or 8 aggregators by default. Override `FIG5_SPECS` only for a reduced
-smoke test. The fixed paper workload contains 16,384 logs total, divided into
-eight epochs of 2,048 logs. Each Kafka commit batch contains eight logs, so an
-epoch contains 256 commit batches. Every row is produced by the requested
-number of real machines.
-The runner starts exactly one aggregator on each selected machine; it never
-places multiple aggregators on one machine. The CSV reports aggregation
-prove/verify time, Kafka/RocksDB/FDB components, host and prover RSS, proof
-size, and query costs. Dev mode executes the same zkVM guests but does not
-create real STARK proofs; use the ZK output for proof size and real proving
-costs. Compare aggregation time and speedup with Figure 5, and the component
-measurements with Table 3. Expect the real-ZK run to take many hours.
-The runner prints the CSV header before the sweep and labels each subsequent
-line as a result row, so terminal output has the same field ordering as the
-saved CSV.
+single-machine rows and not a native scaling sweep.
 
 `ARTIFACT_MACHINES` is the resulting ordered pool. A point requesting `N`
 aggregators uses its first `N` entries. For example, run every mode on exactly
@@ -429,12 +400,71 @@ FIG5_SPECS="histogram:4" \
 make eval-fig5-table3-zk
 ```
 
-The first `ARTIFACT_MACHINES` entry is the coordinator running locally; subsequent
-entries may be SSH aliases or `user@host` targets and must support passwordless
-SSH. The command rejects a requested
-aggregator count larger than the configured machine pool. The two Make targets
-force `RISC0_DEV_MODE=1` and `RISC0_DEV_MODE=0`, respectively, regardless of
-the caller's environment.
+The first `ARTIFACT_MACHINES` entry is the coordinator running locally;
+subsequent entries may be SSH aliases or `user@host` targets and must support
+passwordless SSH. The command rejects a requested aggregator count larger than
+the configured machine pool. The two Make targets force `RISC0_DEV_MODE=1` and
+`RISC0_DEV_MODE=0`, respectively, regardless of the caller's environment.
+
+After completing the shared cluster setup above, run the functional dev-mode
+sweep with:
+
+```bash
+KAFKA_HOST=<coordinator-private-address> make eval-fig5-table3-dev
+```
+
+Then start the real-proof sweep with:
+
+```bash
+KAFKA_HOST=<coordinator-private-address> make eval-fig5-table3-zk
+```
+
+Expected outputs are `results/fig5_dev.csv` and `results/fig5_zk.csv`. Both
+commands directly measure all 12 combinations of three aggregation modes and
+1, 2, 4, or 8 aggregators by default. Override `FIG5_SPECS` only for a reduced
+smoke test. For example, `FIG5_SPECS="samples:1,2,4,8"` runs the four listed
+aggregator counts for samples, while `FIG5_SPECS="samples:8"` runs only the
+eight-aggregator samples point. Multiple selections can be combined, such as
+`FIG5_SPECS="samples:1,8 histogram:4,8"`. Alternatively,
+`FIG5_NUM_AGGREGATORS="2,4,8"` applies the same count list to all three modes.
+
+Run selected aggregator counts for one aggregation mode:
+
+```bash
+# Samples with 1, 2, 4, and 8 aggregators
+KAFKA_HOST=<coordinator-private-address> \
+  FIG5_SPECS="samples:1,2,4,8" \
+  make eval-fig5-table3-dev
+
+# Samples with only 8 aggregators
+KAFKA_HOST=<coordinator-private-address> \
+  FIG5_SPECS="samples:8" \
+  make eval-fig5-table3-dev
+```
+
+Apply the same aggregator-count list to all three modes (`samples`,
+`histogram`, and `cm`):
+
+```bash
+KAFKA_HOST=<coordinator-private-address> \
+  FIG5_NUM_AGGREGATORS="1,2,4,8" \
+  make eval-fig5-table3-dev
+```
+
+The fixed paper workload contains 16,384 logs total, divided into
+eight epochs of 2,048 logs. Each Kafka commit batch contains eight logs, so an
+epoch contains 256 commit batches. Every row is produced by the requested
+number of real machines.
+The runner starts exactly one aggregator on each selected machine; it never
+places multiple aggregators on one machine. The CSV reports aggregation
+prove/verify time, Kafka/RocksDB/FDB components, host and prover RSS, proof
+size, and query costs. Dev mode executes the same zkVM guests but does not
+create real STARK proofs; use the ZK output for proof size and real proving
+costs. Compare aggregation time and speedup with Figure 5, and the component
+measurements with Table 3. Expect the real-ZK run to take many hours.
+The runner prints the CSV header before the sweep and labels each subsequent
+line as a result row, so terminal output has the same field ordering as the
+saved CSV.
 
 #### Figure 4 — vehicle-emissions end-to-end pipeline
 
@@ -533,12 +563,39 @@ proxy; this is stated so reviewers know what to expect:
 
 ## Outputs and comparison
 
-All experiments write to `results/` (CSVs, a `*_summary.md`) and `plots/` (PDFs);
-both are git-ignored and created on demand. Compare your regenerated numbers and
-plots to the corresponding paper Figure/Table — exact wall-clock will vary with
-hardware, but the **trends** (near-linear aggregation speedup, constant
-verification, compact proofs, aggregation-dominated latency) are the claims under
-evaluation.
+The following table is the complete output index. Result files under `results/`
+contain the measured values; PDFs under `plots/` are derived visualizations.
+Both directories are git-ignored and created on demand.
+
+| Experiment | Command | Measured result files | Plot or summary |
+|---|---|---|---|
+| §7.2 online commitment throughput | `BENCH_INPUT=synthetic cargo run ... --streaming --bench` | Terminal output (`serial_ns_per_event`); no result file | No plot |
+| Native/ZK comparison inputs | `make eval-non-zk-baseline` or `make eval-non-zk-all` | `results/non_zk_aggregation_baseline.csv`, `results/non_zk_query_baseline.csv`, `results/zk_cost_breakdown.csv` | `results/non_zk_baseline_summary.md` when measured ZK inputs exist; `plots/non_zk_vs_zk_aggregation.pdf`, `plots/non_zk_vs_zk_query.pdf`, `plots/zk_cost_breakdown.pdf` |
+| Local zkVM dev checks | `make eval-zkvm-dev-mode` | `results/zkvm_dev_aggregation.csv`, `results/zkvm_dev_query.csv` | Inputs to Figure 6/7 plots |
+| Figure 4 vehicle, dev | `KAFKA_HOST=... make eval-fig4-vehicle-dev` | `results/e2e_dev_zk/vehicle_dev_zk.jsonl` | `plots/fig4_e2e.pdf` |
+| Figure 4 vehicle, real ZK | `KAFKA_HOST=... make eval-fig4-vehicle-zk` | `results/e2e_real_zk/vehicle_real_zk.jsonl` | `plots/fig4_e2e.pdf` |
+| Figure 5 / Table 3, dev | `KAFKA_HOST=... make eval-fig5-table3-dev` | `results/fig5_dev.csv` | `plots/fig5_scaling.pdf`, `plots/table3_cost_components.pdf` |
+| Figure 5 / Table 3, real ZK | `KAFKA_HOST=... make eval-fig5-table3-zk` | `results/fig5_zk.csv` | `plots/fig5_scaling.pdf`, `plots/table3_cost_components.pdf` |
+| Figure 6 aggregator, dev | `make eval-fig6-aggregator-dev` | `results/zkvm_dev_aggregation.csv` | `plots/fig6_aggregation.pdf` |
+| Figure 6 aggregator, real ZK | `make eval-fig6-aggregator-zk` | `results/zkvm_aggregation_56threads.csv` | `plots/fig6_aggregation.pdf` |
+| Figure 7 query, dev | `make eval-fig7-query-dev` | `results/zkvm_dev_query.csv` | `plots/fig7_query.pdf` |
+| Figure 7 query, real ZK | `make eval-fig7-query-zk` | `results/zkvm_query_proofs.csv` | `plots/fig7_query.pdf` |
+| Table 2 native distributed pipeline | `KAFKA_HOST=... make eval-table2-native` | `results/table2_native.csv`, `results/table2_native/<dataset>_native.jsonl` | `plots/table2_native.pdf` |
+| Native Google/CAIDA end-to-end baseline | `make eval-non-zk-e2e` | `results/non_zk_e2e_baseline.csv` | Included in the non-ZK summary when present |
+
+After running any desired subset of experiments, generate every plot whose
+measured input is available with:
+
+```bash
+make eval-plots-all
+```
+
+This command does not rerun experiments or invent missing values. It prints a
+`skipped` message for every plot whose input CSV/JSONL is absent. Compare the
+regenerated numbers and plots to the corresponding paper Figure/Table — exact
+wall-clock will vary with hardware, but the **trends** (near-linear aggregation
+speedup, constant verification, compact proofs, aggregation-dominated latency)
+are the claims under evaluation.
 
 ## Troubleshooting
 

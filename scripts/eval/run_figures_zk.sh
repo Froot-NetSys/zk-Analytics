@@ -59,6 +59,20 @@ print(",".join(str(x) for x in [var,mode,
 PY
 }
 
+print_labeled_row(){ local csv="$1"
+  python3 - "$csv" <<'PY'
+import csv, sys
+with open(sys.argv[1], newline="") as f:
+    rows = list(csv.reader(f))
+if len(rows) < 2:
+    raise SystemExit(f"no result row in {sys.argv[1]}")
+header, values = rows[0], rows[-1]
+if len(header) != len(values):
+    raise SystemExit(f"CSV column mismatch: {len(header)} headers, {len(values)} values")
+print(", ".join(f"{name}={value}" for name, value in zip(header, values)))
+PY
+}
+
 run_cell(){
   local log="$ROOT_DIR/results/_dist_driver.log"
   if ! env "$@" MODE=zk RISC0_DEV_MODE="$DEV_MODE" bash "$DRV" 2>&1 | tee "$log"; then
@@ -75,14 +89,28 @@ if [ "${FIG:-5}" = 5 ]; then
   echo "[fig5-${RUN_KIND}] setup: logs_per_epoch=$FIG5_LOGS_PER_EPOCH total_logs=$FIG5_TOTAL_LOGS logs_per_commit_batch=$FIG5_LOGS_PER_COMMIT_BATCH commit_batches_per_epoch=$((FIG5_LOGS_PER_EPOCH / FIG5_LOGS_PER_COMMIT_BATCH))"
   C="$ROOT_DIR/results/fig5_${RUN_KIND}.csv"; echo "$HDR" > "$C"
   echo "[fig5-${RUN_KIND}] result header: $HDR"
-  # Build the full cross product by default. FIG5_SPECS remains an explicit
-  # point selector for reduced checks.
+  # Build the full cross product by default.  A FIG5_SPECS item may select one
+  # count (samples:8) or a comma-separated list (samples:1,2,4,8).
   if [[ -n "${FIG5_SPECS:-}" ]]; then
-    specs="$FIG5_SPECS"
+    specs=""
+    for selection in $FIG5_SPECS; do
+      if [[ "$selection" != *:* ]]; then
+        echo "[fig5-${RUN_KIND}] invalid FIG5_SPECS item '$selection'; expected mode:count[,count...]" >&2
+        exit 2
+      fi
+      mode="${selection%%:*}"
+      counts="${selection#*:}"
+      counts="${counts//,/ }"
+      for n in $counts; do
+        specs="${specs:+$specs }$mode:$n"
+      done
+    done
   else
     specs=""
     for mode in ${FIG5_MODES:-samples histogram cm}; do
-      for n in ${FIG5_NUM_AGGREGATORS:-1 2 4 8}; do
+      counts="${FIG5_NUM_AGGREGATORS:-1 2 4 8}"
+      counts="${counts//,/ }"
+      for n in $counts; do
         specs="${specs:+$specs }$mode:$n"
       done
     done
@@ -93,13 +121,17 @@ if [ "${FIG:-5}" = 5 ]; then
       echo "[fig5-${RUN_KIND}] invalid mode '$mode'; expected samples, histogram, or cm" >&2
       exit 2
     esac
+    if [[ ! "$N" =~ ^[1-9][0-9]*$ ]]; then
+      echo "[fig5-${RUN_KIND}] invalid aggregator count '$N'; expected a positive integer" >&2
+      exit 2
+    fi
     selected_nodes="$(artifact_nodes_for "$N")"
     echo "[fig5-${RUN_KIND}] mode=$mode aggregators=$N machines=[$selected_nodes]"; : > "$MET"
     run_cell DATASET=synthetic SYNTH_MODE=$mode SYNTH_KEYS=4096 \
       EPOCH_LOGS=$FIG5_LOGS_PER_EPOCH TOTAL_LOGS=$FIG5_TOTAL_LOGS \
       COMMIT_BATCH_SIZE=$FIG5_LOGS_PER_COMMIT_BATCH NODES="$selected_nodes"
     emit "$C" "$N" "$mode"
-    echo "[fig5-${RUN_KIND}] result row: $(tail -n 1 "$C")"
+    echo "[fig5-${RUN_KIND}] result: $(print_labeled_row "$C")"
   done
   echo "[fig5-${RUN_KIND}] -> $C"
 fi

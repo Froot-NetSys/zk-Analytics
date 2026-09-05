@@ -44,6 +44,46 @@ MEM_INTERVAL="${MEM_INTERVAL:-1.0}"
 
 source "$ROOT_DIR/scripts/lib/common.sh"
 
+# A fresh setup may have added the user to the docker group without changing
+# the groups of the current shell.  Keep artifact runs one-shot by falling back
+# to passwordless sudo, as setup_local_e2e.sh itself does.
+docker_cmd() {
+  if docker info >/dev/null 2>&1; then
+    docker "$@"
+  elif sudo -n docker info >/dev/null 2>&1; then
+    sudo -n docker "$@"
+  else
+    echo "[dist] ERROR: Docker is unavailable (including via passwordless sudo)" >&2
+    return 1
+  fi
+}
+
+compose_cmd() {
+  if docker info >/dev/null 2>&1; then
+    if docker compose version >/dev/null 2>&1; then docker compose "$@"; else docker-compose "$@"; fi
+  else
+    if sudo -n docker compose version >/dev/null 2>&1; then sudo -n docker compose "$@"; else sudo -n docker-compose "$@"; fi
+  fi
+}
+
+ensure_local_kafka_listener() {
+  docker_cmd inspect kafka >/dev/null 2>&1 || return 0
+  local expected="PLAINTEXT_HOST://${KAFKA_HOST}:9092" advertised compose_file
+  advertised="$(docker_cmd inspect kafka --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^KAFKA_ADVERTISED_LISTENERS=//p')"
+  [[ ",$advertised," == *",$expected,"* ]] && return 0
+  compose_file="$ROOT_DIR/scripts/docker-compose-kafka.yml"
+  [[ -f "$compose_file" ]] || { echo "[dist] ERROR: cannot reconfigure Kafka; $compose_file is missing" >&2; return 1; }
+  echo "[dist] reconfiguring Kafka advertised listener for ${KAFKA_HOST}:9092 ..."
+  compose_cmd -f "$compose_file" down || return 1
+  KAFKA_EXTERNAL_IP="$KAFKA_HOST" compose_cmd -f "$compose_file" up -d || return 1
+  for _ in {1..30}; do
+    timeout 2 bash -c ">/dev/tcp/${KAFKA_HOST}/9092" 2>/dev/null && return 0
+    sleep 1
+  done
+  echo "[dist] ERROR: Kafka did not become ready after listener reconfiguration" >&2
+  return 1
+}
+
 case "$DATASET" in
   google) AGG_MODE=samples; AGG_TYPE=hash_table; TOTAL_LOGS="${TOTAL_LOGS:-131072}"
     BENCH_INPUT=google
@@ -101,6 +141,7 @@ done
 
 # Fail before cleanup or a long drain wait when the cluster configuration is
 # wrong. KAFKA_HOST must be reachable from every worker for a multi-node run.
+ensure_local_kafka_listener || exit 2
 if ! timeout 5 bash -c ">/dev/tcp/${KAFKA_HOST}/9092" 2>/dev/null; then
   echo "[dist] ERROR: Kafka is not reachable at ${KAFKA_HOST}:9092; set KAFKA_HOST to the coordinator address" >&2
   exit 2
@@ -169,9 +210,13 @@ done
 # ---- clean slate ----------------------------------------------------------
 echo "[dist] reset FDB + topic + per-node raw dirs ..."
 FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" bash "$ROOT_DIR/scripts/setup/reset_fdb.sh" "$FDB_SUBSPACE" >/dev/null 2>&1 || true
-docker exec kafka kafka-topics --bootstrap-server localhost:9092 --delete --topic "$KAFKA_TOPIC" >/dev/null 2>&1 || true
+docker_cmd exec kafka kafka-topics --bootstrap-server localhost:9092 --delete --topic "$KAFKA_TOPIC" >/dev/null 2>&1 || true
 sleep 1
-docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic "$KAFKA_TOPIC" --partitions "$NUM_AGGREGATORS" --replication-factor 1 >/dev/null 2>&1 || true
+if ! docker_cmd exec kafka kafka-topics --bootstrap-server localhost:9092 \
+    --create --topic "$KAFKA_TOPIC" --partitions "$NUM_AGGREGATORS" --replication-factor 1; then
+  echo "[dist] ERROR: failed to create Kafka topic $KAFKA_TOPIC" >&2
+  exit 2
+fi
 # Fresh unique RocksDB dirs (nodes already idle from the pre-run nuke; the
 # RUNID prefix guarantees no collision with any leftover dir).
 for ((i=0;i<NUM_AGGREGATORS;i++)); do
@@ -231,7 +276,7 @@ drained=0
 for ((t=0;t<300;t+=3)); do
   LAG=0; CUR=0
   for ((i=0;i<NUM_AGGREGATORS;i++)); do
-    read l c < <(docker exec kafka kafka-consumer-groups --bootstrap-server localhost:9092 --describe --group "cg_${TAG}_$i" 2>/dev/null \
+    read l c < <(docker_cmd exec kafka kafka-consumer-groups --bootstrap-server localhost:9092 --describe --group "cg_${TAG}_$i" 2>/dev/null \
       | awk 'NR>1 && $6 ~ /^[0-9]+$/ {lag+=$6} NR>1 && $4 ~ /^[0-9]+$/ {cur+=$4} END{print lag+0, cur+0}')
     LAG=$((LAG+${l:-0})); CUR=$((CUR+${c:-0}))
   done

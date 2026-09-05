@@ -67,6 +67,46 @@ for host in "${INPUT_MACHINES[@]:1}"; do
   NORMALIZED+=("$target")
 done
 
+# setup_local_e2e.sh may have started Kafka with its local-only default
+# (localhost:9092).  That accepts TCP connections on the coordinator but the
+# broker metadata then directs every remote worker to its own localhost.  When
+# Kafka is the repository-managed local container, make its advertised address
+# match --kafka-host automatically.  The sudo fallback also handles the shell
+# in which setup_local_e2e.sh has just added the user to the docker group.
+docker_cmd() {
+  if docker info >/dev/null 2>&1; then
+    docker "$@"
+  elif sudo -n docker info >/dev/null 2>&1; then
+    sudo -n docker "$@"
+  else
+    return 1
+  fi
+}
+
+compose_cmd() {
+  if docker info >/dev/null 2>&1; then
+    if docker compose version >/dev/null 2>&1; then docker compose "$@"; else docker-compose "$@"; fi
+  else
+    if sudo -n docker compose version >/dev/null 2>&1; then sudo -n docker compose "$@"; else sudo -n docker-compose "$@"; fi
+  fi
+}
+
+if docker_cmd inspect kafka >/dev/null 2>&1; then
+  expected_listener="PLAINTEXT_HOST://${KAFKA_VALUE}:9092"
+  advertised="$(docker_cmd inspect kafka --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^KAFKA_ADVERTISED_LISTENERS=//p')"
+  if [[ ",$advertised," != *",$expected_listener,"* ]]; then
+    compose_file="$ROOT/scripts/docker-compose-kafka.yml"
+    [[ -f "$compose_file" ]] || { echo "cannot reconfigure Kafka: $compose_file not found" >&2; exit 2; }
+    echo "[artifact-setup] reconfiguring Kafka advertised listener for ${KAFKA_VALUE}:9092"
+    compose_cmd -f "$compose_file" down
+    KAFKA_EXTERNAL_IP="$KAFKA_VALUE" compose_cmd -f "$compose_file" up -d
+    for _ in {1..30}; do
+      timeout 2 bash -c ">/dev/tcp/${KAFKA_VALUE}/9092" 2>/dev/null && break
+      sleep 1
+    done
+  fi
+fi
+
 if ! timeout 5 bash -c ">/dev/tcp/${KAFKA_VALUE}/9092" 2>/dev/null; then
   echo "Kafka ${KAFKA_VALUE}:9092 is not reachable from the coordinator" >&2
   exit 2
