@@ -190,16 +190,6 @@ must be obtained separately. Synthetic experiments need no external datasets.
 | [`scripts/`](scripts/README.md) | Setup, orchestration, benchmarks, and plotting |
 | [`testdata/`](testdata/) | Bundled data and input locations for external datasets |
 
-## Further documentation
-
-- [Distributed end-to-end evaluation](docs/DISTRIBUTED_E2E_GUIDE.md)
-- [Benchmark details](docs/BENCHMARKS.md) and [results collection](docs/RESULTS_COLLECTION_GUIDE.md)
-- [Recovery and resharding internals](docs/INTERNALS.md)
-- [Fault recovery evaluation](docs/EVALUATION_FAULT_RECOVERY.md)
-- [Online resharding evaluation](docs/EVALUATION_ONLINE_RESHARDING.md)
-- [Transparency log integration](docs/transparency_log.md)
-- [Query access control](query_checker/README.md) and [leakage detector](cf_detector/README.md)
-
 ## Citation and license
 
 If you use zk-Analytics in your research, please cite *Zero-Knowledge Cloud
