@@ -88,7 +88,7 @@ RBIN="$DIST/bin"                        # remote node binaries
 node_bin() { if [[ "$1" == "$COORD" ]]; then echo "$LBIN"; else echo "$RBIN"; fi; }
 node_memtrace() { if [[ "$1" == "$COORD" ]]; then echo "$ROOT_DIR/scripts/lib/mem_trace.py"; else echo "$RBIN/mem_trace.py"; fi; }
 
-echo "[dist] $DATASET mode=$MODE nodes=$NUM_AGGREGATORS ($NODES_STR) epoch=$EPOCH_LOGS"
+echo "[dist] $DATASET mode=$MODE nodes=$NUM_AGGREGATORS ($NODES_STR) logs_per_epoch=$EPOCH_LOGS total_logs=$TOTAL_LOGS logs_per_commit_batch=$COMMIT_BATCH_SIZE commit_batches_per_epoch=$EPOCH_BATCH_THRESHOLD"
 
 # Fail before cleanup or a long drain wait when the cluster configuration is
 # wrong. KAFKA_HOST must be reachable from every worker for a multi-node run.

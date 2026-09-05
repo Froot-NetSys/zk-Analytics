@@ -392,7 +392,10 @@ KAFKA_HOST=<coordinator-private-address> make eval-fig5-table3-zk
 Expected outputs are `results/fig5_dev.csv` and `results/fig5_zk.csv`. Both
 commands directly measure all 12 combinations of three aggregation modes and
 1, 2, 4, or 8 aggregators by default. Override `FIG5_SPECS` only for a reduced
-smoke test. Every row is produced by the requested number of real machines.
+smoke test. The fixed paper workload contains 16,384 logs total, divided into
+eight epochs of 2,048 logs. Each Kafka commit batch contains eight logs, so an
+epoch contains 256 commit batches. Every row is produced by the requested
+number of real machines.
 The runner starts exactly one aggregator on each selected machine; it never
 places multiple aggregators on one machine. The CSV reports aggregation
 prove/verify time, Kafka/RocksDB/FDB components, host and prover RSS, proof

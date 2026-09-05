@@ -4,8 +4,8 @@ set -euo pipefail
 # aggregator->FDB->querier. RISC0_DEV_MODE=1 executes the guests without a real
 # STARK proof; RISC0_DEV_MODE=0 performs real proving and verification. Reports,
 # per cell: prove time, verify time, memory (host + r0vm prover), proof size,
-# public output (journal bytes). The default is the full 12-cell matrix at an
-# epoch size of 16,384 logs; real proving can take hours.
+# public output (journal bytes). The default is the full 12-cell matrix with
+# 2,048 logs per epoch and 16,384 logs total; real proving can take hours.
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT_DIR"
 DRV="$ROOT_DIR/scripts/distributed/run_distributed_baseline.sh"
 # Must match the driver's metrics path (run_distributed_baseline.sh writes here).
@@ -19,6 +19,13 @@ case "$DEV_MODE" in
   1) RUN_KIND=dev ;;
   *) echo "RISC0_DEV_MODE must be 0 (real ZK) or 1 (dev mode)" >&2; exit 2 ;;
 esac
+
+# Paper Figure 5/Table 3 workload. A commit batch contains eight logs, so an
+# epoch consists of 256 commit batches. There are eight epochs in the fixed
+# 16,384-log workload before it is distributed across the selected machines.
+FIG5_LOGS_PER_EPOCH=2048
+FIG5_TOTAL_LOGS=16384
+FIG5_LOGS_PER_COMMIT_BATCH=8
 
 emit(){ local csv="$1" var="$2" mode="$3"
   python3 - "$MET" "$var" "$mode" "$RUN_KIND" >> "$csv" <<'PY'
@@ -64,6 +71,7 @@ HDR="var,mode,agg_total_s,prove_s,verify_s,kafka_recv_s,rocksdb_raw_insert_s,fdb
 
 if [ "${FIG:-5}" = 5 ]; then
   echo "=== Figure 5 ${RUN_KIND}: distributed aggregation (vary aggregators) ==="
+  echo "[fig5-${RUN_KIND}] setup: logs_per_epoch=$FIG5_LOGS_PER_EPOCH total_logs=$FIG5_TOTAL_LOGS logs_per_commit_batch=$FIG5_LOGS_PER_COMMIT_BATCH commit_batches_per_epoch=$((FIG5_LOGS_PER_EPOCH / FIG5_LOGS_PER_COMMIT_BATCH))"
   C="$ROOT_DIR/results/fig5_${RUN_KIND}.csv"; echo "$HDR" > "$C"
   # Build the full cross product by default. FIG5_SPECS remains an explicit
   # point selector for reduced checks.
@@ -85,7 +93,9 @@ if [ "${FIG:-5}" = 5 ]; then
     esac
     selected_nodes="$(artifact_nodes_for "$N")"
     echo "[fig5-${RUN_KIND}] mode=$mode aggregators=$N machines=[$selected_nodes]"; : > "$MET"
-    run_cell DATASET=synthetic SYNTH_MODE=$mode SYNTH_KEYS=4096 TOTAL_LOGS=131072 NODES="$selected_nodes"
+    run_cell DATASET=synthetic SYNTH_MODE=$mode SYNTH_KEYS=4096 \
+      EPOCH_LOGS=$FIG5_LOGS_PER_EPOCH TOTAL_LOGS=$FIG5_TOTAL_LOGS \
+      COMMIT_BATCH_SIZE=$FIG5_LOGS_PER_COMMIT_BATCH NODES="$selected_nodes"
     emit "$C" "$N" "$mode"
     cat "$C" | tail -1
   done
