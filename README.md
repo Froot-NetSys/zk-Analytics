@@ -64,76 +64,115 @@ for sizing and expected runtimes.
 ```bash
 git clone https://github.com/Froot-NetSys/zk-Analytics.git
 cd zk-Analytics
-
-# Keep compiler temporary files on the same filesystem as build outputs.
 mkdir -p target/tmp
 
-# Install dependencies and the RISC Zero toolchain, start Kafka/FoundationDB,
-# and build the pipeline binaries and zkVM guests. Uses sudo.
-./scripts/setup/setup_local_e2e.sh --all
-```
-
-If installation adds your account to the Docker group, log out and back in
-before using Docker without `sudo`. If the newly installed tools are not on
-`PATH`, load them into the current shell:
-
-```bash
+# Install system dependencies and the RISC Zero toolchain (uses sudo).
+./scripts/setup/setup_local_e2e.sh --deps
+./scripts/setup/setup_local_e2e.sh --risc0
 source "$HOME/.cargo/env"
 export PATH="$HOME/.risc0/bin:$PATH"
+
+# Build the Aggregator, Querier, and their zkVM guests for the local example.
+cargo build --release -p aggregator --bin aggregator -p querier --bin querier
 ```
 
-For an already configured environment, rebuild with:
+The local example below uses RocksDB. For a Kafka/FoundationDB deployment,
+follow the setup instructions in the
+[Artifact Evaluation Guide](docs/ARTIFACT-EVALUATION.md).
+
+## E2E example
+
+This single-machine example generates 16 synthetic sample events with valid
+per-source hash chains, aggregates one epoch into RocksDB, and queries its sum
+through the HTTP query engine. It uses the Aggregator's input generator to
+prepare the batches that a Kafka consumer would normally store.
+
+Run the commands from the repository root. The example uses **dev mode** for a
+quick functional run: the zkVM guests execute, but the returned receipts are
+fake and provide no cryptographic proof. To generate real proofs, set
+`RISC0_DEV_MODE=0` in both the Aggregator and Querier commands and repeat the
+example with a fresh data directory; proving takes longer.
+
+### 1. Prepare sample data
+
+In terminal 1, create a fresh directory and generate one epoch of committed
+sample batches:
 
 ```bash
-./scripts/setup/setup_local_e2e.sh --build
+DEMO_DIR=$(mktemp -d "$PWD/target/tmp/zk-analytics-demo.XXXXXX")
+
+target/release/aggregator --gen-raw-epochs --mode samples \
+  --raw-rocksdb-path "$DEMO_DIR/raw" \
+  --start-seq 0 --end-seq 0 \
+  --series 4 --samples-per-series 4 --commit-batch-size 4 --seed 1
 ```
 
-For a manual build, `cargo build --release` builds the default workspace
-features. Kafka binaries and FoundationDB support must be enabled explicitly:
+### 2. Run the Aggregator
+
+In the same terminal, process the input batches and persist the sample summary:
 
 ```bash
-cargo build --release -p data_source --bin kafka-producer --features kafka
-cargo build --release -p aggregator --features 'kafka fdb'
-cargo build --release -p querier --features fdb
+env -u FDB_CLUSTER_FILE RISC0_DEV_MODE=1 AGGR_IDLE_TIMEOUT_SECS=1 \
+  target/release/aggregator --rocksdb --mode samples \
+  --raw-rocksdb-path "$DEMO_DIR/raw" \
+  --agg-rocksdb-path "$DEMO_DIR/agg"
 ```
 
-## Quick start
+Wait for `DONE: epochs_proved=1`. The Aggregator exits after processing the
+epoch and one second of inactivity, releasing the database for the Querier.
 
-After setup, run the native analytics and local zkVM functional checks:
+### 3. Start the query engine (Querier)
+
+Still in terminal 1, start the HTTP service against the aggregated data.
+`DP_ENABLED=0` disables differential privacy noise for this example so the
+query returns the exact sum.
 
 ```bash
-# Native aggregation/query baseline; writes CSVs under results/.
-make eval-non-zk-baseline
-
-# Execute aggregation/query guests locally without generating real proofs.
-make eval-zkvm-dev-mode
+env -u FDB_CLUSTER_FILE RISC0_DEV_MODE=1 DP_ENABLED=0 \
+  AGG_ROCKSDB_PATH="$DEMO_DIR/agg" HTTP_LISTEN=127.0.0.1:8082 \
+  target/release/querier
 ```
 
-**Dev mode does not produce cryptographic proofs.** It executes the guest and
-returns a fake receipt. Use it to check guest execution; use the real-proof
-experiments in the [Artifact Evaluation Guide](docs/ARTIFACT-EVALUATION.md)
-to evaluate proving, verification, and proof size.
+Leave it running. Once it prints `listening on http://127.0.0.1:8082/query`,
+it is ready to accept queries.
 
-For a complete deployment, follow the
-[artifact evaluation guide](docs/ARTIFACT-EVALUATION.md#step-3--distributed-experiments),
-which covers cluster configuration, worker builds, datasets, and experiment
-commands. The distributed pipeline runs the Kafka consumer and aggregator as
-separate processes, with local RocksDB buffers and FoundationDB as the shared
-epoch store.
+### 4. Send a query and inspect the result
 
-## Query example
-
-Once the pipeline has ingested and aggregated sample data, query the sum of
-sample values over the last hour:
+In terminal 2, from the repository root, request the sum over the last hour
+and save the full JSON response, including the proof bundle:
 
 ```bash
-curl -sS http://localhost:8082/query \
+curl --fail-with-body -sS http://127.0.0.1:8082/query \
   -H 'Content-Type: application/json' \
-  -d '{"type":"samples_sum","window":"1h"}'
+  -d '{"type":"samples_sum","window":"1h"}' \
+  -o target/readme-query.json
+
+# Display the answer fields; the full proof bundle remains in the saved JSON.
+python3 - <<'PYTHON'
+import json
+from pathlib import Path
+
+response = json.loads(Path("target/readme-query.json").read_text())
+print(json.dumps({k: v for k, v in response.items() if k != "proof"}, indent=2))
+PYTHON
 ```
 
-The querier returns the answer with a proof of the query computation. It listens
-on port `8082` by default; use `HTTP_LISTEN` to configure the listening address.
+With the sample parameters above and default data-generation settings, the
+answer is:
+
+```json
+{
+  "type": "samples_sum",
+  "sum": 1065257,
+  "dp_offset_sum": 0,
+  "suppressed": false
+}
+```
+
+The saved response also contains a `proof` object with the receipt and digest.
+In dev mode, this is a fake receipt. Run the query within an hour of aggregation
+so the example epoch falls inside the requested window. Press `Ctrl+C` in
+terminal 1 to stop the Querier when finished.
 
 ## Repository layout
 
