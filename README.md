@@ -121,38 +121,19 @@ commands. The distributed pipeline runs the Kafka consumer and aggregator as
 separate processes, with local RocksDB buffers and FoundationDB as the shared
 epoch store.
 
-## Query API
+## Query example
 
-The querier serves `POST /query` and listens on `0.0.0.0:8082` by default
-(override with `HTTP_LISTEN`). Run these examples against a deployed pipeline
-after it has ingested and aggregated data of the corresponding epoch type.
+Once the pipeline has ingested and aggregated sample data, query the sum of
+sample values over the last hour:
 
 ```bash
-# Sum sample values in the last hour.
 curl -sS http://localhost:8082/query \
   -H 'Content-Type: application/json' \
   -d '{"type":"samples_sum","window":"1h"}'
-
-# Read histogram bucket 42 over the last day.
-curl -sS http://localhost:8082/query \
-  -H 'Content-Type: application/json' \
-  -d '{"type":"histogram_bucket","window":"1d","bucket":42}'
-
-# Return the top 20 Count-Min sketch entries over the last five minutes.
-curl -sS http://localhost:8082/query \
-  -H 'Content-Type: application/json' \
-  -d '{"type":"cm_topk","window":"5m","limit":20}'
-
-# Sum samples whose numeric key matches 123 in its low 16 bits.
-curl -sS http://localhost:8082/query \
-  -H 'Content-Type: application/json' \
-  -d '{"type":"samples_sum_key","window":"1h","key":123,"mask":65535}'
 ```
 
-The [request and response types](querier/server/src/main_parts/common.rs)
-define the HTTP schema, including additional query types and key filters.
-Deployment scripts configure the storage paths and FoundationDB connection;
-see the [distributed setup guide](docs/DISTRIBUTED_SETUP.md) for configuration.
+The querier returns the answer with a proof of the query computation. It listens
+on port `8082` by default; use `HTTP_LISTEN` to configure the listening address.
 
 ## Repository layout
 
