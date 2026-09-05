@@ -1,237 +1,198 @@
 # zk-Analytics
 
-`zk-Analytics` is a distributed, end-to-end **verifiable, privacy-preserving cloud
-analytics** system. It augments an analytics pipeline with lightweight append-only
-log commitments and zero-knowledge proofs of correct aggregation and query
-execution, so an external verifier can check reported results **without** access to
-raw logs or the provider's infrastructure. Proofs are generated with the
-[RISC Zero](https://risczero.com) zkVM. This repository is the implementation
-described in the paper [*"Zero-Knowledge Cloud
-Analytics"*](https://dl.acm.org/doi/10.1145/3789240.3829157).
+**Verifiable, privacy-preserving cloud analytics with zero-knowledge proofs.**
 
-## Artifact evaluation (SIGCOMM 2026)
+zk-Analytics combines lightweight log commitments with proofs of correct
+aggregation and query execution. An external verifier can check analytics
+results without access to raw logs or the cloud provider's infrastructure.
+The system uses SHA-256 hash chains for online commitments and the
+[RISC Zero zkVM](https://risczero.com) for offline proving.
 
-Reviewers should start with the **[Artifact Evaluation
-Guide](docs/ARTIFACT-EVALUATION.md)** for the artifact description, hardware
-requirements, installation, quick-start commands, and the mapping from
-evaluation scripts to paper figures and tables.
+This repository accompanies [*Zero-Knowledge Cloud Analytics* (SIGCOMM 2026)](https://dl.acm.org/doi/10.1145/3789240.3829157).
 
-## Architecture
+## SIGCOMM 2026 Artifact Evaluation
 
-The pipeline has three logically separated stages (paper §4–5):
+**SIGCOMM 2026 artifact evaluation reviewers: please start with the
+[Artifact Evaluation Guide](docs/ARTIFACT-EVALUATION.md).**
+The guide provides hardware and software requirements, setup instructions,
+functional checks, and step-by-step commands to reproduce the paper's figures
+and tables, including expected outputs and troubleshooting.
 
-1. **Online commitment — `data_source/`.** Each data source emits time-series
-   `(timestamp, key, value)` log entries and incrementally commits to them with a
-   lightweight **SHA-256 hash chain** (one constant-size update per log). Committed
-   batches are streamed to the provider through a Kafka dispatcher, and each source
-   may publish hash-chain checkpoints to a public transparency log (Trillian — see
-   `deploy/trillian/` and `docs/transparency_log.md`).
-2. **Offline distributed aggregation — `aggregator/`.** Shared-nothing aggregators
-   consume committed batches from Kafka into a local RocksDB buffer, group them into
-   fixed-size epochs, and run a RISC Zero **guest** that verifies the source
-   hash-chain and aggregates the epoch into a query-ready summary (per-key samples,
-   histograms, or a Count-Min sketch). Each epoch is chained to the previous one and
-   persisted; its aggregate state is stored in RocksDB or FoundationDB.
-3. **Offline query + verification — `querier/`.** An HTTP service answers analytics
-   queries over a time window, returning the **answer plus a RISC Zero proof** that
-   the window's epochs are authentic (epoch-chain + commitment checks) and that the
-   query was executed correctly. Verifiers validate the proof offline, without raw
-   logs or provider infrastructure.
+## Overview
 
-### Crates
+The pipeline separates online ingestion from offline aggregation and queries:
 
-| Crate (package) | Path | Role |
-|-----------------|------|------|
-| `data_source` | `data_source/` | log generation + SHA-256 commitment; Kafka producer; Trillian checkpoints |
-| `aggregator` | `aggregator/host/` | epoch aggregation + RISC Zero proving; Kafka consumer; resharding tools |
-| `aggregator-core` | `aggregator/core/` | `no_std` aggregation logic shared by host + guests |
-| `aggr_samples` / `aggr_cm` / `aggr_histogram` | `aggregator/methods/guest*` | RISC Zero aggregation guests: samples / Count-Min / histogram |
-| `querier` | `querier/server/` | HTTP query service + RISC Zero proving |
-| `querier-core` (+ guests) | `querier/{core,methods}/` | query logic + RISC Zero query guests |
-| `common` | `common/` | RocksDB / FoundationDB stores, epoch types, differential privacy |
-| `zkvm-common` | `zkvm-common/` | shared `no_std` zkVM types (`Event`, hash-chain) |
-| `query-checker` | `query_checker/` | query allow/block-list access control (§5.4) |
-| `cf_detector` | `cf_detector/` | control-flow / output leakage detector for query guests (§5.4) |
-| `native-baseline` | `native_baseline/` | non-ZK baseline running the same analytics natively (evaluation) |
+```text
+Data sources → Kafka → Kafka consumers → Aggregators → Querier → Answer + proof
+                            │                 │            ↑
+                       RocksDB buffer         └─ Epoch store ─┘
+                                              (RocksDB / FoundationDB)
+```
+
+1. **Commit logs.** Data sources emit `(timestamp, key, value)` events, update
+   per-source SHA-256 hash chains, and stream committed batches through Kafka.
+   Optional [Trillian checkpoints](docs/transparency_log.md) publish commitments
+   to a transparency log.
+2. **Aggregate epochs.** Kafka consumers buffer batches in RocksDB. Aggregators
+   verify commitments and compute per-key samples, histograms, or Count-Min
+   sketches inside zkVM guests. Epoch summaries, chain metadata, and proofs are
+   persisted for subsequent queries.
+3. **Query and verify.** The HTTP querier loads epochs for a time window and
+   produces an answer with a proof of the query computation and commitment
+   checks. The verifier checks the proof without reading the underlying logs.
+
+The repository also includes query access control, query-guest leakage analysis,
+crash recovery, online resharding, and native baselines for evaluation.
 
 ## Build
 
-```bash
-# RocksDB bindings need clang/libclang:
-sudo apt-get update
-sudo apt-get install -y clang libclang-dev
+### Prerequisites
 
-# Optional features: Kafka (rdkafka, cmake-build) and Trillian (protoc):
-sudo apt-get install -y cmake libssl-dev pkg-config protobuf-compiler
+The setup scripts support **Ubuntu/Debian**. Host code uses Rust; zkVM guests
+require the RISC Zero toolchain. RocksDB bindings require Clang/libclang.
+Kafka builds additionally use CMake; the optional Trillian integration requires
+`protoc`. The FoundationDB backend uses **FoundationDB 7.1**.
 
-# RISC Zero toolchain (guest compiler + r0vm):
-curl -L https://risczero.com/install | bash && rzup install
+For full proof experiments, the artifact guide specifies an **AVX-512 x86-64
+CPU**, **at least 64 GB RAM**, and **50+ GB free disk space**. Native and
+functional checks have lower requirements. See the
+[hardware and runtime requirements](docs/ARTIFACT-EVALUATION.md#prerequisites)
+for sizing and expected runtimes.
 
-cargo build --release        # host crates + RISC Zero guest ELFs
-```
-
-Proof **generation** uses AVX-512 for performance; proof **verification** does not.
-FoundationDB 7.1 is required only for the FDB-backed (`--features fdb`) path.
-
-### Hardware requirements
-
-- **CPU**: x86-64 with **AVX-512**; many cores recommended (the zkVM prover
-  scales with core count).
-- **RAM**: **≥ 64 GB** — the zkVM prover peaks around 9–10 GB per
-  aggregation/query node.
-- **Storage**: NVMe SSD (RocksDB / FoundationDB backing store).
-
-## Run
-
-Each service is a Cargo binary. End-to-end, committed batches flow
-`data_source → Kafka → aggregator → RocksDB/FoundationDB → querier`.
+### Install and build
 
 ```bash
-# Aggregator: consume a Kafka topic into a local RocksDB buffer and prove epochs
-# of type samples | histogram | cm (add --features fdb to store aggregates in FDB).
-cargo run -p aggregator --release --features kafka -- --mode samples
-
-# Data source: stream events as a Kafka producer (per-source SHA-256 hash chain).
-cargo run -p data_source --bin kafka-producer --release --features kafka -- \
-  --events 100000 --batch-size 100
-
-# Querier: HTTP query service (default HTTP_LISTEN=0.0.0.0:8082).
-cargo run -p querier --release
-```
-
-For a full local run (Kafka + FoundationDB via Docker, orchestrated in tmux):
-
-```bash
-./scripts/setup/setup_local_e2e.sh --all   # install deps, Kafka/FDB, RISC Zero toolchain
-./scripts/eval/run_local_e2e.sh start      # data_source -> Kafka -> aggregator -> FDB -> querier
-./scripts/eval/run_local_e2e.sh status
-```
-
-
-## RocksDB
-
-All services use the same data directory:
-
-- `ROCKSDB_PATH` (default: `/mydata/rocksdb`)
-
-### Logical tables (stored as key-value records)
-
-- `aggregator`:
-  - `agg_mode_state` (mode-level chain tip for aggregated epochs)
-  - `agg_epochs` (aggregated epochs + merge proof fields + `result_commit`)
-  - `agg_cm_struct` (structured CM counts/heap + `result_commit`)
-  - `agg_hist_struct` (structured histogram totals/table + `result_commit`)
-  - `verified_epoch_frames` (verified-only storage for `samples_epoch`)
-  - `verified_samples_struct` (structured per-epoch totals + `result_commit` for `samples_epoch`)
-  - `bad_epoch_frames` (quarantine for frames that fail verification)
-
-Reset RocksDB storage:
-
-```bash
-ROCKSDB_PATH=/mydata/rocksdb ./scripts/setup/reset_rocksdb.sh
-```
-
-## Aggregator
-
-### What it does
-
-It polls `epoch_frames`, verifies each per-source RISC Zero proof (host-side), and:
-
-- For `cm_epoch (epoch_type=cm_epoch)`:
-  - merges **CM array** by element-wise sum
-  - merges **topk heap** by key (sum counts for matching keys)
-  - produces a RISC Zero merge proof (the `aggr_cm` guest)
-  - stores structured CM into `agg_cm_struct` and the SHA-256 `result_commit` into `agg_epochs`
-  - stores the aggregate into `agg_epochs` and deletes the original per-source rows for that `(epoch_type, sequence)`
-- For `histogram_epoch (epoch_type=histogram_epoch)`:
-  - merges bucket counts by bucket (sum)
-  - produces a RISC Zero merge proof (the `aggr_histogram` guest)
-  - stores structured histogram into `agg_hist_struct` and the SHA-256 `result_commit` into `agg_epochs`
-  - stores the aggregate into `agg_epochs` and deletes the original per-source rows for that `(epoch_type, sequence)`
-- For `samples_epoch (epoch_type=samples_epoch)`:
-  - verify-only: moves rows from `epoch_frames` into `verified_epoch_frames`
-  - extracts `(out_commit,total_count,total_sum)` from the verified proof output, computes a SHA-256 `result_commit`, and stores into `verified_samples_struct` (the stored samples table is `(key,key_chain_tip,len,sum,occ)`; `key_chain_tip` is a SHA-256 chain over that key’s values, preserving per-key order only)
-  - the per-source `chain_hash` is computed by the zkVM guest as `SHA-256(SHA-256(chain_prev || TAG_FINALIZE) || out_commit)` where `out_commit` is a commutative sum of SHA-256 digests over `(key,key_chain_tip,len,sum)` for occupied slots (so cross-key reordering does not change the commitment)
-
-### Config
-
-- `ROCKSDB_PATH`
-- `INIT_DB=1` to initialize RocksDB (no-op)
-- `POLL_MS` (default: `500`)
-- `MODES` (default: `1,2,3`)
-- `MIN_SOURCES` (default: `1`) for `cm/histogram` aggregation trigger
-- `ALLOW_GAPS` (default: `0`) if `0`, only aggregates `sequence = last_seq+1` per mode
-- `PROOF_COMPRESS` (default: `0`) controls whether aggregator-generated proofs are compressed
-- `VERIFY_ONLY_BATCH` (default: `100`) batch size for `samples_epoch` verify-only
-
-### Run
-
-```bash
+git clone https://github.com/Froot-NetSys/zk-Analytics.git
 cd zk-Analytics
-ROCKSDB_PATH=/mydata/rocksdb INIT_DB=1 cargo run -p aggregator
+mkdir -p target/tmp
+
+# Install system dependencies and the RISC Zero toolchain (uses sudo).
+./scripts/setup/setup_local_e2e.sh --deps
+./scripts/setup/setup_local_e2e.sh --risc0
+source "$HOME/.cargo/env"
+export PATH="$HOME/.risc0/bin:$PATH"
+
+# Build the Aggregator, Querier, and their zkVM guests for the local example.
+cargo build --release -p aggregator --bin aggregator -p querier --bin querier
 ```
 
-> Recovery semantics and online resharding internals are documented in [docs/INTERNALS.md](docs/INTERNALS.md).
+The local example below uses RocksDB. For a Kafka/FoundationDB deployment,
+follow the setup instructions in the
+[Artifact Evaluation Guide](docs/ARTIFACT-EVALUATION.md).
 
-## Querier
+## E2E example
 
-### What it does
+This single-machine example generates 16 synthetic sample events with valid
+per-source hash chains, aggregates one epoch into RocksDB, and queries its sum
+through the HTTP query engine. It uses the Aggregator's input generator to
+prepare the batches that a Kafka consumer would normally store.
 
-`querier` serves `POST /query`:
+Run the commands from the repository root. The example uses **dev mode** for a
+quick functional run: the zkVM guests execute, but the returned receipts are
+fake and provide no cryptographic proof. To generate real proofs, set
+`RISC0_DEV_MODE=0` in both the Aggregator and Querier commands and repeat the
+example with a fresh data directory; proving takes longer.
 
-- Loads epochs in a time window from aggregator tables (`agg_epochs` / `agg_*` / `verified_samples_struct`)
-- Builds a RISC Zero proof that checks:
-  - each epoch struct matches its `epoch_commit` (SHA-256 commitment recomputed in-circuit)
-  - commitments are bound into a window digest (SHA-256 fold)
-  - window merge + query result are correct
-  - (optional) if `SAMPLES_BIND_RAW=1`, also recomputes `samples_epoch` per-key chains from `sample_events` (ordered by `idx`) and rejects epochs whose `out_commit` / table do not match
+### 1. Prepare sample data
 
-### Config
-
-- `HTTP_LISTEN` (default: `${QUERIER_IP}:8082`)
-- `ROCKSDB_PATH`
-- `PROOF_COMPRESS=1` to return compressed RISC Zero (Groth16) proofs (default `0` = recursive receipts)
-
-### Run
+In terminal 1, create a fresh directory and generate one epoch of committed
+sample batches:
 
 ```bash
-cd zk-Analytics
-ROCKSDB_PATH=/mydata/rocksdb cargo run -p querier
+DEMO_DIR=$(mktemp -d "$PWD/target/tmp/zk-analytics-demo.XXXXXX")
+
+target/release/aggregator --gen-raw-epochs --mode samples \
+  --raw-rocksdb-path "$DEMO_DIR/raw" \
+  --start-seq 0 --end-seq 0 \
+  --series 4 --samples-per-series 4 --commit-batch-size 4 --seed 1
 ```
 
-### API examples
+### 2. Run the Aggregator
 
-Samples sum:
+In the same terminal, process the input batches and persist the sample summary:
 
 ```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"samples_sum","window":"1h"}'
+env -u FDB_CLUSTER_FILE RISC0_DEV_MODE=1 AGGR_IDLE_TIMEOUT_SECS=1 \
+  target/release/aggregator --rocksdb --mode samples \
+  --raw-rocksdb-path "$DEMO_DIR/raw" \
+  --agg-rocksdb-path "$DEMO_DIR/agg"
 ```
 
-Histogram bucket:
+Wait for `DONE: epochs_proved=1`. The Aggregator exits after processing the
+epoch and one second of inactivity, releasing the database for the Querier.
+
+### 3. Start the query engine (Querier)
+
+Still in terminal 1, start the HTTP service against the aggregated data.
+`DP_ENABLED=0` disables differential privacy noise for this example so the
+query returns the exact sum.
 
 ```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"histogram_bucket","window":"1d","bucket":42}'
+env -u FDB_CLUSTER_FILE RISC0_DEV_MODE=1 DP_ENABLED=0 \
+  AGG_ROCKSDB_PATH="$DEMO_DIR/agg" HTTP_LISTEN=127.0.0.1:8082 \
+  target/release/querier
 ```
 
-CM top-k:
+Leave it running. Once it prints `listening on http://127.0.0.1:8082/query`,
+it is ready to accept queries.
+
+### 4. Send a query and inspect the result
+
+In terminal 2, from the repository root, request the sum over the last hour
+and save the full JSON response, including the proof bundle:
 
 ```bash
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"cm_topk","window":"5m","limit":20}'
+curl --fail-with-body -sS http://127.0.0.1:8082/query \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"samples_sum","window":"1h"}' \
+  -o target/readme-query.json
+
+# Display the answer fields; the full proof bundle remains in the saved JSON.
+python3 - <<'PYTHON'
+import json
+from pathlib import Path
+
+response = json.loads(Path("target/readme-query.json").read_text())
+print(json.dumps({k: v for k, v in response.items() if k != "proof"}, indent=2))
+PYTHON
 ```
 
-Samples sum by key prefix/suffix (bitmask match):
+With the sample parameters above and default data-generation settings, the
+answer is:
 
-```bash
-# Example: suffix match on low 16 bits (mask = 0xffff)
-curl -sS localhost:8082/query \
-  -H 'content-type: application/json' \
-  -d '{"type":"samples_sum_key","window":"1h","key":123,"mask":65535}'
+```json
+{
+  "type": "samples_sum",
+  "sum": 1065257,
+  "dp_offset_sum": 0,
+  "suppressed": false
+}
 ```
 
-> Benchmarking and the non-ZK native baseline are documented in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+The saved response also contains a `proof` object with the receipt and digest.
+In dev mode, this is a fake receipt. Run the query within an hour of aggregation
+so the example epoch falls inside the requested window. Press `Ctrl+C` in
+terminal 1 to stop the Querier when finished.
+
+## Repository layout
+
+| Path | Purpose |
+|---|---|
+| [`data_source/`](data_source/) | Event generation, SHA-256 commitments, Kafka producer, optional Trillian checkpoints |
+| [`aggregator/`](aggregator/) | Kafka consumer, aggregation host, shared aggregation logic, and zkVM guests |
+| [`querier/`](querier/) | HTTP service, query hosts, shared query logic, and zkVM guests |
+| [`common/`](common/) | RocksDB/FoundationDB storage, epoch types, and differential privacy utilities |
+| [`zkvm-common/`](zkvm-common/) | Shared `no_std` event and hash-chain types |
+| [`query_checker/`](query_checker/) | Query allow/block-list access control |
+| [`cf_detector/`](cf_detector/) | Control-flow and output leakage analysis for query guests |
+| [`native_baseline/`](native_baseline/) | Native analytics for non-ZK performance comparisons |
+| [`scripts/`](scripts/README.md) | Setup, orchestration, benchmarks, and plotting |
+| [`testdata/`](testdata/) | Bundled data and input locations for external datasets |
+
+## Citation and license
+
+If you use zk-Analytics in your research, please cite *Zero-Knowledge Cloud
+Analytics* (SIGCOMM 2026). Author and publication metadata are available in
+[`CITATION.cff`](CITATION.cff).
+
+zk-Analytics is released under the [MIT License](LICENSE).
