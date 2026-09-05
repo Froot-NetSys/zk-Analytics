@@ -40,6 +40,13 @@ By running the experiments, reviewers can reproduce or validate the results in:
   FoundationDB. The bundled vehicle-emissions Figure 4/Table 2 run uses four
   of these machines.
 
+Real proof generation takes hours per experiment. Larger Figure 4 and Figure 7
+points can take days; the guide identifies reduced-scale proof runs.
+
+The vehicle-emissions dataset is bundled. Google Cluster v3 must be downloaded
+separately. CAIDA traces require an academic data-sharing agreement and cannot
+be redistributed by the authors.
+
 ## Detailed instructions
 
 ### Requirements
