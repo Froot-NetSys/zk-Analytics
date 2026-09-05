@@ -547,7 +547,23 @@ make eval-plots-all
 ```
 
 This command does not rerun experiments or invent missing values. It prints a
-`skipped` message for every plot whose input CSV/JSONL is absent. Compare the
+`skipped` message for every plot whose input CSV/JSONL is absent or empty, and
+writes `plots/plot_manifest.json` listing which PDFs were generated or skipped.
+Missing matplotlib is an error, not a successful plotting run. Existing PDFs
+for skipped experiments are preserved with a stale-output warning; do not treat
+them as results of the current run. Existing CSV/JSONL inputs are reused, so
+check their provenance before interpreting the plots.
+
+To plot an isolated set of results without mixing previous experiments:
+
+```bash
+python3 scripts/lib/plot_all_results.py \
+  --results-dir /path/to/this-run/results --plots-dir /path/to/this-run/plots
+```
+
+Dev-only runs check guest execution, not cryptographic proof generation or
+verification costs. A successful plotting command with skipped inputs does
+not mean that all experiments passed. Compare the
 regenerated numbers and plots to the corresponding paper Figure/Table — exact
 wall-clock will vary with hardware, but the **trends** (near-linear aggregation
 speedup, constant verification, compact proofs, aggregation-dominated latency)

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
+trap 'echo "[dev] ERROR at line $LINENO; benchmark incomplete (see results/_dev_*.log)" >&2' ERR
 # Run local aggregation/query guest checks in RISC Zero DEV MODE
 # (RISC0_DEV_MODE=1), using one aggregator:
 # the guest is EXECUTED (RISC-V emulation / witness generation) but NO STARK
@@ -68,6 +69,12 @@ for mode in $FIG6_MODES; do
   ee=$(grep -oE '^epoch_events=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
   trss=$(grep -oE 'Maximum resident set size \(kbytes\): [0-9]+' "$log" | grep -oE '[0-9]+$' | head -1 || true)
   journal=$(grep -oE '^journal_bytes_last=[0-9]+' "$log" | head -1 | cut -d= -f2 || true)
+  for metric in pm hwm ee trss journal; do
+    if [[ ! ${!metric} =~ ^[0-9]+$ ]]; then
+      echo "[dev] missing $metric in $log; refusing incomplete CSV row" >&2
+      exit 1
+    fi
+  done
   printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
     "$mode" "$unique_keys" "$events_per_key" "$THREADS" \
     "${ee:-$FIG6_EPOCH_EVENTS}" "${pm:-}" 0 "${hwm:-}" \
@@ -92,8 +99,8 @@ map_query() {
     *) echo "" ;;
   esac
 }
-run_q() {  # label keys events_per_key skips...
-  local label="$1" kps="$2" epk="$3"; shift 3
+run_q() {  # label expected_rows keys events_per_key skips...
+  local label="$1" expected_rows="$2" kps="$3" epk="$4"; shift 4
   for ne in $EPOCH_LIST; do
     local log="$ROOT_DIR/results/_dev_q_${label}_e${ne}.log"
     echo "[dev] query $label epochs=$ne (RISC0_DEV_MODE=1) ..."
@@ -103,15 +110,25 @@ run_q() {  # label keys events_per_key skips...
       --dp-disabled "$@" > "$log" 2>&1
     local rss
     rss=$(grep -oE 'Maximum resident set size \(kbytes\): [0-9]+' "$log" | grep -oE '[0-9]+$' | head -1 || true)
+    local count
+    count=$(grep -c '^CSVROW,' "$log" || true)
+    if [[ "$count" != "$expected_rows" || ! "$rss" =~ ^[0-9]+$ ]]; then
+      echo "[dev] incomplete query metrics in $log (expected $expected_rows rows, got $count)" >&2
+      exit 1
+    fi
     grep '^CSVROW,' "$log" | while IFS=, read -r _ qt ep keys pms _vms _pbytes; do
-      mapped=$(map_query "$qt"); [ -z "$mapped" ] && continue
+      mapped=$(map_query "$qt")
+      if [[ -z "$mapped" || "$ep" != "$ne" || ! "$keys" =~ ^[0-9]+$ || ! "$pms" =~ ^[0-9]+$ ]]; then
+        echo "[dev] invalid query metrics in $log: $qt,$ep,$keys,$pms" >&2
+        exit 1
+      fi
       echo "${mapped% *},${mapped#* },$ep,$((keys * epk)),$keys,$pms,0,${rss:-},0" >> "$Q_OUT"
     done
   done
 }
-run_q samples   1024 8 --skip-histogram --skip-cm --skip-raw --skip-samples-sum-key
-run_q histogram 1024 8 --skip-samples --skip-cm --skip-raw --skip-histogram-bucket --skip-histogram-all
-run_q cm        8192 1 --skip-samples --skip-histogram --skip-raw
+run_q samples   2 1024 8 --skip-histogram --skip-cm --skip-raw --skip-samples-sum-key
+run_q histogram 1 1024 8 --skip-samples --skip-cm --skip-raw --skip-histogram-bucket --skip-histogram-all
+run_q cm        2 8192 1 --skip-samples --skip-histogram --skip-raw
 fi
 
 echo "[dev] done."

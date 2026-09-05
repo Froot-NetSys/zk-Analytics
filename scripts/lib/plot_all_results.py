@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import csv
+import argparse
 import glob
 import json
 import os
@@ -14,13 +15,14 @@ try:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 except ImportError:
-    print("[plots] skipped all PDFs: install python3-matplotlib (or pip install matplotlib)")
-    raise SystemExit(0)
+    print("[plots] ERROR: install python3-matplotlib (or pip install matplotlib)")
+    raise SystemExit(1)
 
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 RESULTS = os.path.join(ROOT, "results")
 PLOTS = os.path.join(ROOT, "plots")
+STATUS = {}
 
 
 def rows(path):
@@ -42,11 +44,15 @@ def save(fig, name):
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
+    STATUS[name] = {"status": "generated", "path": path}
     print(f"[plots] wrote {path}")
 
 
 def skipped(name, inputs):
+    STATUS[name] = {"status": "skipped", "inputs": inputs}
     print(f"[plots] skipped {name}: missing measured input ({', '.join(inputs)})")
+    if os.path.exists(os.path.join(PLOTS, name)):
+        print(f"[plots] WARNING: existing {name} is stale; it was NOT regenerated")
 
 
 def plot_fig4():
@@ -267,6 +273,14 @@ def plot_non_zk_comparisons():
 
 
 def main():
+    global RESULTS, PLOTS
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--results-dir", default=RESULTS)
+    parser.add_argument("--plots-dir", default=PLOTS)
+    args = parser.parse_args()
+    RESULTS = os.path.abspath(args.results_dir)
+    PLOTS = os.path.abspath(args.plots_dir)
+    STATUS.clear()
     os.makedirs(PLOTS, exist_ok=True)
     plot_fig4()
     plot_fig5()
@@ -275,6 +289,11 @@ def main():
     plot_table2()
     plot_table3()
     plot_non_zk_comparisons()
+    manifest = os.path.join(PLOTS, "plot_manifest.json")
+    with open(manifest, "w") as output:
+        json.dump({"results_dir": RESULTS, "plots": STATUS}, output, indent=2)
+        output.write("\n")
+    print(f"[plots] wrote {manifest}; skipped plots are not validated results")
 
 
 if __name__ == "__main__":
