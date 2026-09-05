@@ -171,7 +171,7 @@ without hours of proving.
 make eval-non-zk-baseline
 
 # (b) Local zkVM guest checks in DEV MODE (RISC0_DEV_MODE=1): the aggregation
-#     and query guests execute and witnesses are generated, but no STARK proof
+#     and query guests execute and witnesses are generated, but no SNARK proof
 #     is created. Uses one aggregator and writes results/zkvm_dev_*.csv.
 make eval-zkvm-dev-mode
 ```
