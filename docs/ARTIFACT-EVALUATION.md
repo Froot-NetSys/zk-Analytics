@@ -352,9 +352,7 @@ The first entry is the local coordinator and is not contacted over SSH.
 are non-interactive. The generated `.artifact-cluster.env` is ignored by Git
 and is loaded automatically by Figure 4, Table 2, Figure 5, and Table 3.
 Complete Step 0 on every worker first; this setup script configures access and
-deploys the artifact but does not install OS packages or start Kafka/FDB. Each
-selected machine runs exactly one aggregator. A single machine cannot validate
-the distributed experiments below.
+deploys the artifact but does not install OS packages or start Kafka/FDB.
 
 #### Figure 5 and Table 3 — distributed aggregation
 
