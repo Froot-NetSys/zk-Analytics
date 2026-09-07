@@ -60,8 +60,16 @@ collect_parse(){
   python3 "$ROOT_DIR/scripts/lib/_parse_zkvm_distributed_sweep.py" --mode "$mode" --num-aggregators "$N" --logdir "$LD" --jsonl "$JSONL"
 }
 # wait for all DONE markers: args = "node:idx:runid ..."
-wait_done(){ for spec in "$@"; do IFS=: read -r n i run <<< "$spec"
-  for ((t=0;t<30000;t+=15)); do on_node "$n" "test -f /tmp/${run}_$i.DONE" 2>/dev/null && break; sleep 15; done; done; }
+wait_done() {
+  local spec n i run
+  for spec in "$@"; do
+    IFS=: read -r n i run <<< "$spec"
+    # Proofs can take hours on CPU. Do not collect before completion.
+    until on_node "$n" "test -f /tmp/${run}_$i.DONE" 2>/dev/null; do
+      sleep 15
+    done
+  done
+}
 
 TS=$(date +%s)
 for mode in ${MODES:-samples histogram cm}; do

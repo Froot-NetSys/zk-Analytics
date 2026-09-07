@@ -204,7 +204,8 @@ EPOCH_TIMEOUT_MS="${EPOCH_TIMEOUT_MS:-300000}"
 MIN_EPOCHS_FOR_QUERIER="${MIN_EPOCHS_FOR_QUERIER:-8}"
 
 # Timeout waiting for minimum epochs (seconds)
-EPOCH_WAIT_TIMEOUT_SEC="${EPOCH_WAIT_TIMEOUT_SEC:-300}"
+# Waiting for proved epochs includes proof generation; 0 means unlimited.
+EPOCH_WAIT_TIMEOUT_SEC="${EPOCH_WAIT_TIMEOUT_SEC:-0}"
 
 # RocksDB paths for separated architecture
 RAW_ROCKSDB_BASE="/mydata/rocksdb"
@@ -1406,7 +1407,7 @@ wait_for_min_epochs_in_fdb() {
     local timeout_sec="${2:-$EPOCH_WAIT_TIMEOUT_SEC}"
     local start_time=$(date +%s)
 
-    log_step "Waiting for at least $min_epochs epoch(s) in FDB (timeout: ${timeout_sec}s)..."
+    log_step "Waiting for at least $min_epochs epoch(s) in FDB (timeout: ${timeout_sec}s, 0=unlimited)..."
 
     local num_machines=$(echo $AGGREGATOR_MACHINES | wc -w)
     local agg_per_machine=$((NUM_AGGREGATORS / num_machines))
@@ -1416,7 +1417,7 @@ wait_for_min_epochs_in_fdb() {
         local current_time=$(date +%s)
         local elapsed=$((current_time - start_time))
 
-        if [[ $elapsed -ge $timeout_sec ]]; then
+        if [[ "$timeout_sec" -gt 0 && $elapsed -ge $timeout_sec ]]; then
             log_warn "  ⚠ Timeout waiting for epochs after ${timeout_sec}s"
             return 1
         fi

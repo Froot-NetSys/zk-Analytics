@@ -400,6 +400,26 @@ KAFKA_HOST=node0 make eval-fig4-vehicle-zk
 Expected output: `results/e2e_real_zk/vehicle_real_zk.jsonl`. Only this second
 command may be used for proof-generation and proof-verification performance.
 
+Real proofs can take hours on CPU. Real-ZK runs wait without a time limit for
+aggregator completion (`AGG_MAX_WAIT=0`; a positive value imposes a limit).
+Queries run locally through `BENCH_REQUEST`, without HTTP or a query timeout,
+and produce three JSON results using the same query handler and proof code.
+Database, merge, proof, verification, and memory measurements are retained.
+Query progress is recorded in
+`/mydata/zk-analytics-runs/dist_run/vehicle_histogram_n4_zk/logs/querier.log`,
+with prover CPU and memory samples in the adjacent `../mem_query.csv`.
+These paths use the default `RUN_ROOT`.
+
+The Figure 5/Table 3 and Table 2 pipeline targets share this local query path.
+The single-machine e2e baseline also runs three local queries without a time
+limit and fails the run if a query fails. Figure 6/7 standalone benchmarks
+already wait for proof completion without a deadline. The standalone
+distributed zkVM sweep now waits for all completion markers before collecting
+results. In the general distributed e2e runner, waiting for the first proved
+epochs is also unlimited by default (`EPOCH_WAIT_TIMEOUT_SEC=0`).
+Service connection/readiness checks and epoch flush/idle timers retain their
+limits; they do not impose a deadline on an active proof.
+
 #### Validate the run
 
 A successful run requires zero exit codes from every aggregator, nonempty

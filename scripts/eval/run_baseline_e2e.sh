@@ -19,7 +19,7 @@ set -uo pipefail
 #   EPOCH_LOGS 8192 | 16384 | 32768   (logs per epoch; threshold = EPOCH_LOGS/8)
 # Optional env (sane per-dataset defaults below):
 #   NUM_AGGREGATORS, TOTAL_LOGS, COMMIT_BATCH_SIZE, AGGR_IDLE_TIMEOUT_SECS,
-#   KAFKA_BROKERS, FDB_CLUSTER_FILE, WORK_BASE, QUERIER_PORT
+#   KAFKA_BROKERS, FDB_CLUSTER_FILE, WORK_BASE
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
@@ -31,7 +31,6 @@ COMMIT_BATCH_SIZE="${COMMIT_BATCH_SIZE:-8}"
 KAFKA_BROKERS="${KAFKA_BROKERS:-localhost:9092}"
 FDB_CLUSTER_FILE="${FDB_CLUSTER_FILE:-/etc/foundationdb/fdb.cluster}"
 AGGR_IDLE_TIMEOUT_SECS="${AGGR_IDLE_TIMEOUT_SECS:-15}"
-QUERIER_PORT="${QUERIER_PORT:-8090}"
 WORK_BASE="${WORK_BASE:-/mydata/baseline_run}"
 MEM_INTERVAL="${MEM_INTERVAL:-0.5}"
 
@@ -229,28 +228,46 @@ QMEMPID=$!; PIDS+=($QMEMPID)
 # Disable the access-control policy for the performance baseline: it must run
 # all query types (incl. cm_topk, which the default policy rejects). Access
 # control is ON by default in deployments; QUERY_POLICY_ENFORCE=0 opts out here.
-/usr/bin/time -v env E2E_TIMING=1 BENCH_PRINT=1 QUERY_NO_PROVE="$QUERY_NO_PROVE" \
-  QUERY_POLICY_ENFORCE=0 \
-  FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" FDB_SUBSPACE="$FDB_SUBSPACE" \
-  HTTP_LISTEN="0.0.0.0:$QUERIER_PORT" \
-  "$QUERIER_BIN" > "$LOGDIR/querier.log" 2>&1 &
-QPID=$!; PIDS+=($QPID)
-
-# Wait for querier to accept connections.
-for _ in $(seq 1 60); do
-  if curl -s -o /dev/null -m 2 "localhost:$QUERIER_PORT/query" \
-       -H 'content-type: application/json' -d "$QUERY_JSON"; then break; fi
-  sleep 1
+# BENCH_REQUEST invokes the same query handler directly, without HTTP.
+# Wait for process completion: CPU proofs have no wall-clock deadline.
+: > "$LOGDIR/querier.log"
+for attempt in 1 2 3; do
+  echo "[cell] local query $attempt/3 (no timeout; log=$LOGDIR/querier.log) ..."
+  attempt_log="$LOGDIR/query_attempt_$attempt.log"
+  /usr/bin/time -v env E2E_TIMING=1 RISC0_DEV_MODE="${RISC0_DEV_MODE:-0}" QUERY_POLICY_ENFORCE=0 BENCH_PRINT=1 \
+    BENCH_REQUEST="$QUERY_JSON" BENCH_PRINT_RESPONSE=1 QUERY_NO_PROVE="$QUERY_NO_PROVE" \
+    FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" FDB_SUBSPACE="$FDB_SUBSPACE" \
+    "$QUERIER_BIN" > "$attempt_log" 2>> "$LOGDIR/querier.log"
+  query_status=$?
+  cat "$attempt_log" >> "$LOGDIR/querier.log"
+  if [[ "$query_status" -ne 0 ]]; then
+    echo "[cell] ERROR: local query $attempt/3 exited with status $query_status; see $LOGDIR/querier.log" >&2
+    kill -TERM "$QMEMPID" 2>/dev/null
+    wait "$QMEMPID" 2>/dev/null
+    tail -40 "$LOGDIR/querier.log" >&2
+    exit 5
+  fi
+  # Benchmark timing lines share stdout with the JSON response.
+  python3 - "$attempt_log" "$LOGDIR/query_response_$attempt.json" <<'PY_RESPONSE' || exit 5
+import json, sys
+responses = []
+with open(sys.argv[1]) as source:
+    for line in source:
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict) and "proof" in value:
+            responses.append(value)
+if len(responses) != 1:
+    raise SystemExit("expected exactly one local query response")
+with open(sys.argv[2], "w") as output:
+    json.dump(responses[0], output)
+    output.write("\n")
+PY_RESPONSE
 done
-# Issue the query (a few reps; the last bench line is parsed).
-for _ in 1 2 3; do
-  curl -s -m 600 "localhost:$QUERIER_PORT/query" \
-    -H 'content-type: application/json' -d "$QUERY_JSON" \
-    >> "$LOGDIR/query_response.json" 2>/dev/null || true
-done
-sleep 1
-kill -INT "$QMEMPID" 2>/dev/null || true; wait "$QMEMPID" 2>/dev/null || true
-kill -TERM "$QPID" 2>/dev/null || true; wait "$QPID" 2>/dev/null || true
+kill -TERM "$QMEMPID" 2>/dev/null
+wait "$QMEMPID" 2>/dev/null
 
 # ---- 5) Parse + emit metrics ----------------------------------------------
 echo "[cell] parsing metrics -> $METRICS"

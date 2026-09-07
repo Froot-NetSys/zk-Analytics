@@ -29,7 +29,6 @@ EPOCH_LOGS="${EPOCH_LOGS:-16384}"
 COMMIT_BATCH_SIZE="${COMMIT_BATCH_SIZE:-8}"
 KAFKA_HOST="${KAFKA_HOST:-node0}"
 KAFKA_BROKERS="${KAFKA_HOST}:9092"
-QUERIER_PORT="${QUERIER_PORT:-8090}"
 DIST="${ARTIFACT_REMOTE_DIST_DIR:-$HOME/zktel-dist}" # worker deploy dir (bin/, lib/)
 if [[ -z "${FDB_CLUSTER_FILE:-}" ]]; then
   if [[ -f /etc/foundationdb/fdb.cluster ]]; then
@@ -327,12 +326,15 @@ done
 # Poll each node for its DONE marker (cheap test -f over SSH; no long-held channel).
 if [ "$MODE" = native ]; then
   AGG_MAX_WAIT="${AGG_MAX_WAIT:-600}"
+elif [[ "$RISC0_DEV_MODE" == 1 ]]; then
+  AGG_MAX_WAIT="${AGG_MAX_WAIT:-1800}"
 else
-  AGG_MAX_WAIT="${AGG_MAX_WAIT:-20000}"
+  AGG_MAX_WAIT="${AGG_MAX_WAIT:-0}"
 fi
+# Zero means wait until completion without a proving deadline.
 for ((i=0;i<NUM_AGGREGATORS;i++)); do
   node_done=0
-  for ((t=0;t<AGG_MAX_WAIT;t+=10)); do
+  for ((t=0;AGG_MAX_WAIT == 0 || t<AGG_MAX_WAIT;t+=10)); do
     if on_node "${NODES[i]}" "test -f ${ALOG}_$i.DONE" 2>/dev/null; then
       node_done=1
       break
@@ -371,22 +373,46 @@ echo "[dist] querier on $COORD ..."
 nohup python3 "$ROOT_DIR/scripts/lib/mem_trace.py" --out "$WORK/mem_query.csv" --summary "$WORK/mem_query.json" \
   --match querier --match r0vm --interval "$MEM_INTERVAL" > "$LOGDIR/mempoll_q.log" 2>&1 &
 QMEM=$!
-/usr/bin/time -v env E2E_TIMING=1 RISC0_DEV_MODE=$RISC0_DEV_MODE BENCH_PRINT=1 QUERY_NO_PROVE="$QUERY_NO_PROVE" \
-  FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" FDB_SUBSPACE="$FDB_SUBSPACE" HTTP_LISTEN="0.0.0.0:$QUERIER_PORT" \
-  "$LBIN/querier" > "$LOGDIR/querier.log" 2>&1 &
-QPID=$!
-query_ready=0
-for _ in $(seq 1 60); do
-  timeout 1 bash -c ">/dev/tcp/localhost/$QUERIER_PORT" 2>/dev/null && { query_ready=1; break; }
-  sleep 1
-done
-[[ "$query_ready" == 1 ]] || { echo '[dist] ERROR: querier did not start' >&2; exit 5; }
+# BENCH_REQUEST invokes the same query handler directly, without HTTP.
+# Wait for process completion: CPU proofs have no wall-clock deadline.
+: > "$LOGDIR/querier.log"
 for attempt in 1 2 3; do
-  curl --fail --silent --show-error -m "${QUERY_TIMEOUT_SECS:-1200}" \
-    "localhost:$QUERIER_PORT/query" -H 'content-type: application/json' -d "$QUERY_JSON" \
-    -o "$LOGDIR/query_response_$attempt.json" || exit 5
+  echo "[dist] local query $attempt/3 (no timeout; log=$LOGDIR/querier.log) ..."
+  attempt_log="$LOGDIR/query_attempt_$attempt.log"
+  /usr/bin/time -v env E2E_TIMING=1 RISC0_DEV_MODE="$RISC0_DEV_MODE" BENCH_PRINT=1 \
+    BENCH_REQUEST="$QUERY_JSON" BENCH_PRINT_RESPONSE=1 QUERY_NO_PROVE="$QUERY_NO_PROVE" \
+    FDB_CLUSTER_FILE="$FDB_CLUSTER_FILE" FDB_SUBSPACE="$FDB_SUBSPACE" \
+    "$LBIN/querier" > "$attempt_log" 2>> "$LOGDIR/querier.log"
+  query_status=$?
+  cat "$attempt_log" >> "$LOGDIR/querier.log"
+  if [[ "$query_status" -ne 0 ]]; then
+    echo "[dist] ERROR: local query $attempt/3 exited with status $query_status; see $LOGDIR/querier.log" >&2
+    kill -TERM "$QMEM" 2>/dev/null
+    wait "$QMEM" 2>/dev/null
+    tail -40 "$LOGDIR/querier.log" >&2
+    exit 5
+  fi
+  # Benchmark timing lines share stdout with the JSON response.
+  python3 - "$attempt_log" "$LOGDIR/query_response_$attempt.json" <<'PY_RESPONSE' || exit 5
+import json, sys
+responses = []
+with open(sys.argv[1]) as source:
+    for line in source:
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict) and "proof" in value:
+            responses.append(value)
+if len(responses) != 1:
+    raise SystemExit("expected exactly one local query response")
+with open(sys.argv[2], "w") as output:
+    json.dump(responses[0], output)
+    output.write("\n")
+PY_RESPONSE
 done
-sleep 1; kill -INT "$QMEM" 2>/dev/null; wait "$QMEM" 2>/dev/null; kill -TERM "$QPID" 2>/dev/null; wait "$QPID" 2>/dev/null
+kill -TERM "$QMEM" 2>/dev/null
+wait "$QMEM" 2>/dev/null
 
 # ---- 5) parse -> metrics --------------------------------------------------
 AGG_WALL=$(python3 -c "print(f'{$AGG_END-$AGG_START:.3f}')")

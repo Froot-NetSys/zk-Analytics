@@ -25,7 +25,7 @@ artifact_cluster_load "$ROOT_DIR"
 if [ "$DEV_MODE" = 1 ]; then
   export AGG_MAX_WAIT="${AGG_MAX_WAIT:-1800}"
 else
-  export AGG_MAX_WAIT="${AGG_MAX_WAIT:-20000}"
+  export AGG_MAX_WAIT="${AGG_MAX_WAIT:-0}"
 fi
 export AGGR_IDLE_TIMEOUT_SECS="${AGGR_IDLE_TIMEOUT_SECS:-20}"
 LOG="/tmp/e2e_${RUN_KIND}.log"; : > "$LOG"
